@@ -1,0 +1,107 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/">
+    <Frame name="PCAFrame" hidden="true" movable="true" enableMouse="true">
+        <Size><AbsDimension x="260" y="488"/></Size>
+        <Anchors>
+            <Anchor point="CENTER"/>
+        </Anchors>
+        <Backdrop bgFile="Interface\\DialogFrame\\UI-DialogBox-Background"
+                  edgeFile="Interface\\DialogFrame\\UI-DialogBox-Border"
+                  tile="true">
+            <BackgroundInsets><AbsInset left="11" right="12" top="12" bottom="11"/></BackgroundInsets>
+            <TileSize><AbsValue val="32"/></TileSize>
+            <EdgeSize><AbsValue val="32"/></EdgeSize>
+        </Backdrop>
+        <Layers>
+            <Layer level="ARTWORK">
+                <FontString name="PCATitle" inherits="GameFontNormalLarge">
+                    <Anchors>
+                        <Anchor point="TOP" y="-14"/>
+                    </Anchors>
+                    <Text>PaladinCore</Text>
+                </FontString>
+                <FontString name="PCASubTitle" inherits="GameFontNormal">
+                    <Anchors>
+                        <Anchor point="TOP" y="-32"/>
+                    </Anchors>
+                    <Text></Text>
+                </FontString>
+            </Layer>
+        </Layers>
+        <Scripts>
+            <OnLoad>
+                this:RegisterForDrag("LeftButton")
+                PCA_OnLoad()
+            </OnLoad>
+            <OnDragStart>
+                this:StartMoving()
+            </OnDragStart>
+            <OnDragStop>
+                this:StopMovingOrSizing()
+            </OnDragStop>
+        </Scripts>
+    </Frame>
+
+    <Button name="PCAMinimapButton" parent="Minimap" enableMouse="true" hidden="false" frameStrata="MEDIUM">
+        <Size><AbsDimension x="33" y="33"/></Size>
+        <Anchors>
+            <Anchor point="CENTER"/>
+        </Anchors>
+        <Layers>
+            <Layer level="BACKGROUND">
+                <Texture name="PCAMinimapButtonIcon" file="Interface\Icons\Ability_ThunderBolt">
+                    <Size><AbsDimension x="21" y="21"/></Size>
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset><AbsDimension x="7" y="-6"/></Offset>
+                        </Anchor>
+                    </Anchors>
+                </Texture>
+            </Layer>
+            <Layer level="OVERLAY">
+                <Texture file="Interface\Minimap\MiniMap-TrackingBorder">
+                    <Size><AbsDimension x="56" y="56"/></Size>
+                    <Anchors>
+                        <Anchor point="TOPLEFT"/>
+                    </Anchors>
+                </Texture>
+            </Layer>
+        </Layers>
+        <Frames>
+            <Frame name="PCAMinimapButtonDraggingFrame" hidden="true">
+                <Scripts>
+                    <OnUpdate>
+                        PCA_MinimapButton_OnUpdate()
+                    </OnUpdate>
+                </Scripts>
+            </Frame>
+        </Frames>
+        <HighlightTexture alphaMode="ADD" file="Interface\Minimap\UI-Minimap-ZoomButton-Highlight"/>
+        <Scripts>
+            <OnLoad>
+                this:RegisterForDrag("LeftButton")
+                PCA_MinimapButton_UpdatePosition()
+            </OnLoad>
+            <OnDragStart>
+                PCAMinimapButtonDraggingFrame:Show()
+            </OnDragStart>
+            <OnDragStop>
+                PCAMinimapButtonDraggingFrame:Hide()
+            </OnDragStop>
+            <OnClick>
+                if PCAFrame:IsVisible() then
+                    PCAFrame:Hide()
+                else
+                    PCA_OpenMenu()
+                end
+            </OnClick>
+            <OnEnter>
+                GameTooltip:SetOwner(this, "ANCHOR_LEFT")
+                GameTooltip:SetText("PaladinCore\n|cffffffffClick to open settings.\nDrag to move.|r")
+                GameTooltip:Show()
+            </OnEnter>
+            <OnLeave>
+                GameTooltip:Hide()
+            </OnLeave>
+        </Scripts>
+    </Button>
+</Ui>
