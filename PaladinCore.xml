@@ -1,6 +1,6 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
     <Frame name="PCAFrame" hidden="true" movable="true" enableMouse="true">
-        <Size><AbsDimension x="260" y="488"/></Size>
+        <Size><AbsDimension x="260" y="520"/></Size>
         <Anchors>
             <Anchor point="CENTER"/>
         </Anchors>
@@ -78,6 +78,7 @@
         <HighlightTexture alphaMode="ADD" file="Interface\Minimap\UI-Minimap-ZoomButton-Highlight"/>
         <Scripts>
             <OnLoad>
+                this:RegisterForClicks("LeftButtonUp", "RightButtonUp")
                 this:RegisterForDrag("LeftButton")
                 PCA_MinimapButton_UpdatePosition()
             </OnLoad>
@@ -88,15 +89,26 @@
                 PCAMinimapButtonDraggingFrame:Hide()
             </OnDragStop>
             <OnClick>
-                if PCAFrame:IsVisible() then
-                    PCAFrame:Hide()
+                if arg1 == "RightButton" then
+                    PCA_Config.StopJudging = not PCA_Config.StopJudging
+                    DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00PaladinCore:|r Stop Judging is now " .. (PCA_Config.StopJudging and "|cffff0000ON|r" or "|cff00ff00OFF|r"))
+                    if PCAStopJudgingBtn then
+                        PCAStopJudgingBtn:SetText(PCA_Config.StopJudging and "Stop Judging: ON" or "Stop Judging: OFF")
+                    end
                 else
-                    PCA_OpenMenu()
+                    if PCAFrame:IsVisible() then
+                        PCAFrame:Hide()
+                    else
+                        PCA_OpenMenu()
+                    end
                 end
             </OnClick>
             <OnEnter>
                 GameTooltip:SetOwner(this, "ANCHOR_LEFT")
-                GameTooltip:SetText("PaladinCore\n|cffffffffClick to open settings.\nDrag to move.|r")
+                GameTooltip:AddLine("PaladinCore", 1, 1, 0)
+                GameTooltip:AddLine("Left-Click: Open settings", 1, 1, 1)
+                GameTooltip:AddLine("Right-Click: Toggle Stop Judging", 1, 1, 1)
+                GameTooltip:AddLine("Drag to move", 0.7, 0.7, 0.7)
                 GameTooltip:Show()
             </OnEnter>
             <OnLeave>

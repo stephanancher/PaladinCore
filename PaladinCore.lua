@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.2.1"
+local PCA_VERSION = "1.3.0"
 
 local defaultOpener        = "Holy Strike"
 local defaultOpenerPrebuff = "Seal of Righteousness"
@@ -179,6 +179,10 @@ end
 -- SoR and SoC are always returned as-is (always want them maintained).
 local function GetEffectiveSpell(spellName)
     if not spellName or spellName == "None" then return nil end
+
+    -- If Stop Judging is ON, we don't swap to SoR (we keep our utility seal up)
+    if PCA_Config.StopJudging then return spellName end
+
     if IsSeal(spellName)
        and spellName ~= "Seal of Righteousness"
        and spellName ~= "Seal of Command"
@@ -239,6 +243,14 @@ local function PCA_GetNextSpellCooldownInfo()
         if spell then
             if IsSeal(spell) then
                 if not PlayerHasSeal(spell) then return 0, 0 end  -- applying seal
+
+                -- If Stop Judging is ON, the next critical action might be Judgement (to apply debuff)
+                if PCA_Config.StopJudging and spell ~= "Seal of Righteousness" and spell ~= "Seal of Command" then
+                    local tex = spellTextures[spell]
+                    if tex and not HasDebuffTexture("target", tex) then
+                        return spellCD("Judgement")
+                    end
+                end
             elseif spell == COMBO_HS_CS then
                 return spellCD(PCA_Config.HSCSToggle or "Holy Strike")
             else
@@ -349,6 +361,16 @@ local function PCA_GetNextActionInfo()
                     -- Missing seal — applying it is the next action
                     return spellTextures[spell] or fallbackTex, true
                 end
+
+                -- If Stop Judging is ON, we allow ONE judgement to apply the utility debuff
+                if PCA_Config.StopJudging and spell ~= "Seal of Righteousness" and spell ~= "Seal of Command" then
+                    local tex = spellTextures[spell]
+                    if tex and not HasDebuffTexture("target", tex) then
+                        local jIcon = PCA_GetSpellIconShortName("Judgement") or fallbackTex
+                        return jIcon, IsSpellReady("Judgement")
+                    end
+                end
+
                 -- Seal active → fall through to next slot
             else
                 local castSpell = (spell == COMBO_HS_CS) and nextHS or spell
@@ -363,7 +385,7 @@ local function PCA_GetNextActionInfo()
     end
 
     -- Judgement filler
-    if IsSpellReady("Judgement") then
+    if not PCA_Config.StopJudging and IsSpellReady("Judgement") then
         return judgeIcon, true
     end
 
@@ -393,6 +415,7 @@ function PCA_OnLoad()
     if not PCA_Config.RotationSpell3 then PCA_Config.RotationSpell3 = defaultRot3          end
     if PCA_Config.Debug          == nil then PCA_Config.Debug          = false end
     if PCA_Config.FightingUndead == nil then PCA_Config.FightingUndead = false end
+    if PCA_Config.StopJudging    == nil then PCA_Config.StopJudging    = false end
     if PCA_Config.MinimapPos     == nil then PCA_Config.MinimapPos     = 45   end
     if PCA_Config.UIScale        == nil then PCA_Config.UIScale        = 0.85 end
 
@@ -652,6 +675,21 @@ function paladincore()
                     CastSpellByName(spell)
                     return
                 end
+
+                -- If Stop Judging is ON, we allow ONE judgement to apply the utility debuff
+                if PCA_Config.StopJudging and spell ~= "Seal of Righteousness" and spell ~= "Seal of Command" then
+                    local tex = spellTextures[spell]
+                    if tex and not HasDebuffTexture("target", tex) then
+                        if IsSpellReady("Judgement") then
+                            dbg("|cff00ff00[PCA] StopJudging: Applying initial " .. spell .. " debuff|r")
+                            CastSpellByName("Judgement")
+                            return
+                        end
+                        -- If Judgement is on CD, wait for it (high priority to get debuff up)
+                        return
+                    end
+                end
+
                 -- seal already active → fall through to next slot
             elseif spell == COMBO_HS_CS then
                 local nextSpell = PCA_Config.HSCSToggle or "Holy Strike"
@@ -674,7 +712,7 @@ function paladincore()
     end
 
     -- Judgement filler — cast whenever off cooldown and all higher slots are busy
-    if IsSpellReady("Judgement") then
+    if not PCA_Config.StopJudging and IsSpellReady("Judgement") then
         dbg("|cff00ff00[PCA] Judgement|r")
         CastSpellByName("Judgement")
         return
@@ -696,7 +734,13 @@ local function PCA_GetFightingUndeadText()
     else return "Fighting Undead: OFF" end
 end
 
+local function PCA_GetStopJudgingText()
+    if PCA_Config.StopJudging then return "Stop Judging: ON"
+    else return "Stop Judging: OFF" end
+end
+
 local fightingUndeadBtnRef = nil
+local stopJudgingBtnRef    = nil
 
 -- ── Dropdown initializers ─────────────────────────────────────────────────────
 
@@ -836,6 +880,19 @@ local function PCA_BuildMenu()
     sep:SetText("|cff555555──────────────────────────|r")
     yOffset = yOffset - 16
 
+    -- ── Stop Judging toggle ──────────────────────────────────────────────────
+    local stopJudgingBtn = CreateFrame("Button", "PCAStopJudgingBtn", frame, "UIPanelButtonTemplate")
+    stopJudgingBtn:SetWidth(210)
+    stopJudgingBtn:SetHeight(22)
+    stopJudgingBtn:SetPoint("TOP", frame, "TOP", 0, yOffset)
+    stopJudgingBtn:SetText(PCA_GetStopJudgingText())
+    stopJudgingBtn:SetScript("OnClick", function()
+        PCA_Config.StopJudging = not PCA_Config.StopJudging
+        stopJudgingBtn:SetText(PCA_GetStopJudgingText())
+    end)
+    stopJudgingBtnRef = stopJudgingBtn
+    yOffset = yOffset - 26
+
     -- ── Fighting Undead toggle ────────────────────────────────────────────────
     local fightingUndeadBtn = CreateFrame("Button", "PCAFightingUndeadBtn", frame, "UIPanelButtonTemplate")
     fightingUndeadBtn:SetWidth(210)
@@ -973,6 +1030,7 @@ function PCA_OpenMenu()
     PCA_UpdateButtons()
     if debugBtnRef then debugBtnRef:SetText(PCA_GetDebugText()) end
     if fightingUndeadBtnRef then fightingUndeadBtnRef:SetText(PCA_GetFightingUndeadText()) end
+    if stopJudgingBtnRef then stopJudgingBtnRef:SetText(PCA_GetStopJudgingText()) end
     PCAFrame:SetScale(PCA_Config.UIScale or 0.85)
     PCAFrame:Show()
 end
