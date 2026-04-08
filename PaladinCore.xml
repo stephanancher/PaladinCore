@@ -103,10 +103,11 @@
             </OnDragStop>
             <OnClick>
                 if arg1 == "RightButton" then
-                    PCA_Config.StopJudging = not PCA_Config.StopJudging
-                    DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00PaladinCore:|r Stop Judging is now " .. (PCA_Config.StopJudging and "|cffff0000ON|r" or "|cff00ff00OFF|r"))
-                    if PCAStopJudgingBtn then
-                        PCAStopJudgingBtn:SetText(PCA_Config.StopJudging and "Stop Judging: ON" or "Stop Judging: OFF")
+                    PCA_Config.JudgingEnabled = not (PCA_Config.JudgingEnabled ~= false)
+                    local status = (PCA_Config.JudgingEnabled and "|cff00ff00YES|r" or "|cffff0000NO|r")
+                    DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00PaladinCore:|r Judging is now " .. status)
+                    if PCAJudgingBtn then
+                        PCAJudgingBtn:SetText(PCA_Config.JudgingEnabled and "Judging: YES" or "Judging: NO")
                     end
                 else
                     if PCAFrame:IsVisible() then
