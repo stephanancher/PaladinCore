@@ -54,7 +54,7 @@
         </Scripts>
     </Frame>
 
-    <Button name="PCAMinimapButton" parent="Minimap" enableMouse="true" hidden="false" frameStrata="MEDIUM">
+    <Button name="PCAMinimapButton" parent="Minimap" enableMouse="true" hidden="true" frameStrata="MEDIUM">
         <Size><AbsDimension x="33" y="33"/></Size>
         <Anchors>
             <Anchor point="CENTER"/>

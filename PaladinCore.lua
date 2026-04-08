@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.6.0"
+local PCA_VERSION = "1.6.1"
 
 local defaultOpener        = "Holy Strike"
 local defaultOpenerPrebuff = "Seal of Righteousness"
@@ -401,6 +401,12 @@ function PCA_OnLoad()
         if PCAMinimapButton then PCAMinimapButton:Hide() end
         this:UnregisterAllEvents()
         return
+    end
+
+    -- If we reached here, we are a Paladin
+    if PCAMinimapButton then 
+        PCAMinimapButton:Show()
+        PCA_MinimapButton_UpdatePosition()
     end
 
     -- Migrate old config keys
