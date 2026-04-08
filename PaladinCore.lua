@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.5.0"
+local PCA_VERSION = "1.5.1"
 
 local defaultOpener        = "Holy Strike"
 local defaultOpenerPrebuff = "Seal of Righteousness"
