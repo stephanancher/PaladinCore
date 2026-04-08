@@ -1,6 +1,6 @@
 <Ui xmlns="http://www.blizzard.com/wow/ui/">
     <Frame name="PCAFrame" hidden="true" movable="true" enableMouse="true">
-        <Size><AbsDimension x="260" y="600"/></Size>
+        <Size><AbsDimension x="260" y="640"/></Size>
         <Anchors>
             <Anchor point="CENTER"/>
         </Anchors>

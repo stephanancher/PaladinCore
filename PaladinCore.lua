@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.4.2"
+local PCA_VERSION = "1.4.3"
 
 local defaultOpener        = "Holy Strike"
 local defaultOpenerPrebuff = "Seal of Righteousness"
@@ -1019,6 +1019,8 @@ local function PCA_BuildMenu()
         dragBtn:SetBackdropBorderColor(0.8, 0.7, 0.2, 1)
         GameTooltip:Hide()
     end)
+
+    yOffset = yOffset - 45
 
     -- ── Scale controls ────────────────────────────────────────────────────────
     local scaleLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
