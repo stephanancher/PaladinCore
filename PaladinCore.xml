@@ -30,6 +30,7 @@
         <Scripts>
             <OnLoad>
                 this:RegisterForDrag("LeftButton")
+                this:SetBackdropColor(0, 0, 0, 1)
                 PCA_OnLoad()
             </OnLoad>
             <OnDragStart>
