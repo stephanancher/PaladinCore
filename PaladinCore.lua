@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.3.0"
+local PCA_VERSION = "1.4.0"
 
 local defaultOpener        = "Holy Strike"
 local defaultOpenerPrebuff = "Seal of Righteousness"
@@ -416,6 +416,8 @@ function PCA_OnLoad()
     if PCA_Config.Debug          == nil then PCA_Config.Debug          = false end
     if PCA_Config.FightingUndead == nil then PCA_Config.FightingUndead = false end
     if PCA_Config.StopJudging    == nil then PCA_Config.StopJudging    = false end
+    if PCA_Config.AssistEnabled  == nil then PCA_Config.AssistEnabled  = false end
+    if PCA_Config.AssistTankName == nil then PCA_Config.AssistTankName = ""    end
     if PCA_Config.MinimapPos     == nil then PCA_Config.MinimapPos     = 45   end
     if PCA_Config.UIScale        == nil then PCA_Config.UIScale        = 0.85 end
 
@@ -575,6 +577,12 @@ end
 -- Combat:   check slots 1→2→3 in priority order each press, then Judgement
 
 function paladincore()
+    -- ── 0) ASSIST LOGIC ──────────────────────────────────────────────────────
+    if PCA_Config.AssistEnabled and PCA_Config.AssistTankName and PCA_Config.AssistTankName ~= "" then
+        TargetByName(PCA_Config.AssistTankName, true)
+        AssistUnit("target")
+    end
+
     local openerSpell = PCA_Config.OpenerSpell or defaultOpener
 
     ----------------------------------------------------------------
@@ -739,8 +747,14 @@ local function PCA_GetStopJudgingText()
     else return "Stop Judging: OFF" end
 end
 
+local function PCA_GetAssistText()
+    if PCA_Config.AssistEnabled then return "Assist: YES"
+    else return "Assist: NO" end
+end
+
 local fightingUndeadBtnRef = nil
 local stopJudgingBtnRef    = nil
+local assistBtnRef         = nil
 
 -- ── Dropdown initializers ─────────────────────────────────────────────────────
 
@@ -893,6 +907,36 @@ local function PCA_BuildMenu()
     stopJudgingBtnRef = stopJudgingBtn
     yOffset = yOffset - 26
 
+    -- ── Assist Tank ──────────────────────────────────────────────────────────
+    MakeLabel("|cffffcc00Tank Name (for Assist):|r", yOffset)
+    yOffset = yOffset - 18
+    local editBox = CreateFrame("EditBox", "PCATankNameEdit", frame, "InputBoxTemplate")
+    editBox:SetWidth(180)
+    editBox:SetHeight(20)
+    editBox:SetPoint("TOP", frame, "TOP", 0, yOffset)
+    editBox:SetAutoFocus(false)
+    editBox:SetText(PCA_Config.AssistTankName or "")
+    editBox:SetScript("OnEnterPressed", function()
+        PCA_Config.AssistTankName = this:GetText()
+        this:ClearFocus()
+    end)
+    editBox:SetScript("OnEditFocusLost", function()
+        PCA_Config.AssistTankName = this:GetText()
+    end)
+    yOffset = yOffset - 26
+
+    local assistBtn = CreateFrame("Button", "PCAAssistBtn", frame, "UIPanelButtonTemplate")
+    assistBtn:SetWidth(210)
+    assistBtn:SetHeight(22)
+    assistBtn:SetPoint("TOP", frame, "TOP", 0, yOffset)
+    assistBtn:SetText(PCA_GetAssistText())
+    assistBtn:SetScript("OnClick", function()
+        PCA_Config.AssistEnabled = not PCA_Config.AssistEnabled
+        assistBtn:SetText(PCA_GetAssistText())
+    end)
+    assistBtnRef = assistBtn
+    yOffset = yOffset - 30
+
     -- ── Fighting Undead toggle ────────────────────────────────────────────────
     local fightingUndeadBtn = CreateFrame("Button", "PCAFightingUndeadBtn", frame, "UIPanelButtonTemplate")
     fightingUndeadBtn:SetWidth(210)
@@ -1031,6 +1075,8 @@ function PCA_OpenMenu()
     if debugBtnRef then debugBtnRef:SetText(PCA_GetDebugText()) end
     if fightingUndeadBtnRef then fightingUndeadBtnRef:SetText(PCA_GetFightingUndeadText()) end
     if stopJudgingBtnRef then stopJudgingBtnRef:SetText(PCA_GetStopJudgingText()) end
+    if assistBtnRef then assistBtnRef:SetText(PCA_GetAssistText()) end
+    if PCATankNameEdit then PCATankNameEdit:SetText(PCA_Config.AssistTankName or "") end
     PCAFrame:SetScale(PCA_Config.UIScale or 0.85)
     PCAFrame:Show()
 end
