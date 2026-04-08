@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.5.1"
+local PCA_VERSION = "1.6.0"
 
 local defaultOpener        = "Holy Strike"
 local defaultOpenerPrebuff = "Seal of Righteousness"
@@ -396,6 +396,13 @@ end
 -- ── Addon load ────────────────────────────────────────────────────────────────
 
 function PCA_OnLoad()
+    local _, class = UnitClass("player")
+    if class ~= "PALADIN" then
+        if PCAMinimapButton then PCAMinimapButton:Hide() end
+        this:UnregisterAllEvents()
+        return
+    end
+
     -- Migrate old config keys
     if PCA_Config.Seal and not PCA_Config.RotationSpell1 then
         PCA_Config.RotationSpell1 = PCA_Config.Seal
