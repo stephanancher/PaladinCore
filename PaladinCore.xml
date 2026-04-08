@@ -12,6 +12,19 @@
             <EdgeSize><AbsValue val="32"/></EdgeSize>
         </Backdrop>
         <Layers>
+            <Layer level="BACKGROUND">
+                <Texture name="$parentSolidBg">
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset><AbsDimension x="11" y="-12"/></Offset>
+                        </Anchor>
+                        <Anchor point="BOTTOMRIGHT">
+                            <Offset><AbsDimension x="-12" y="11"/></Offset>
+                        </Anchor>
+                    </Anchors>
+                    <Color r="0" g="0" b="0" a="1"/>
+                </Texture>
+            </Layer>
             <Layer level="ARTWORK">
                 <FontString name="PCATitle" inherits="GameFontNormalLarge">
                     <Anchors>
@@ -30,7 +43,6 @@
         <Scripts>
             <OnLoad>
                 this:RegisterForDrag("LeftButton")
-                this:SetBackdropColor(0, 0, 0, 1)
                 PCA_OnLoad()
             </OnLoad>
             <OnDragStart>
