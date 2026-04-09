@@ -10,8 +10,10 @@
 > - **MAJOR** — full rotation redesign or breaking config changes
 
 ### Changelog
-| Version | Summary |
-|---------|---------|
+| 1.8.0 | Added in-game version sync. Addon now checks for updates by communicating with other players in Guild/Party/Raid. |
+| 1.7.1 | Absolute priority for Exorcism against Undead/Demon targets (overrides all rotation steps). |
+| 1.7.0 | Tabbed UI refactor (Rotation, Config, Info). Added Info tab with repository link and dedication. |
+| 1.6.2 | (Previous stable version) |
 | 1.2.1 | Auto-attack guardian: ensures auto-attack is always running in combat; never toggles it off. |
 | 1.2.0 | Fighting Undead toggle (Exorcism opener on undead targets). Cooldown feedback: action bar macro button dims when next spell is on CD. Icon prediction fixed for Judgement and Consecration. Rotation changed to strict slot priority order (seals no longer jump to front of queue). |
 | 1.1.1 | Removed dead 'Are you tanking?' button and Tanking config key. |
@@ -137,20 +139,20 @@ The rotation is executed via the `PalCore` macro (`/script paladincore()`).
 It evaluates state on *every press* and performs exactly **one action**.
 
 ### Out of Combat (Opener)
-1. If opener = **attack spell** (Holy Strike, Crusader Strike, or combo):
+1. If **Fighting Undead** is ON and target is Undead/Demon and Exorcism is ready → cast Exorcism + start auto-attack (Absolute Priority).
+2. If opener = **attack spell** (Holy Strike, Crusader Strike, or combo):
    - Attempt the attack if in range and ready
    - Apply `OpenerPrebuff` seal while running in / on GCD
-   - If **Fighting Undead** is ON and the pre-buff seal is already active and
-     target is undead and Exorcism is off cooldown → cast Exorcism + start auto-attack
-2. If opener = **a seal**: apply it silently as a pre-buff
+3. If opener = **a seal**: apply it silently as a pre-buff
 
 ### In Combat — Single Priority Loop
 
-Slots are evaluated in strict order (1 → 2 → 3) with no pre-sealing phase:
+1. If **Fighting Undead** is ON and target is Undead/Demon and Exorcism is ready → cast Exorcism (Absolute Priority).
+2. Slots are evaluated in strict order (1 → 2 → 3) with no pre-sealing phase:
 
 - **Seal slot**: if the seal is missing → apply it and stop. If active → skip to next slot.
 - **Attack slot**: if the spell is ready → cast it and stop. If on cooldown → skip to next slot.
-- After all slots: if **Judgement** is off cooldown → cast it (filler).
+3. After all slots: if **Judgement** is off cooldown → cast it (filler).
 
 `GetEffectiveSpell()` maps utility seals (SotC/SoW/SoL/SoJ) to `"Seal of Righteousness"`
 when their judgement debuff is already on the target — enabling automatic seal-twisting.
