@@ -10,6 +10,7 @@
 > - **MAJOR** — full rotation redesign or breaking config changes
 
 ### Changelog
+| 1.8.1 | Restricted auto-targeting to combat only (prevents accidental long-range pulls with Exorcism). |
 | 1.8.0 | Added in-game version sync. Addon now checks for updates by communicating with other players in Guild/Party/Raid. |
 | 1.7.1 | Absolute priority for Exorcism against Undead/Demon targets (overrides all rotation steps). |
 | 1.7.0 | Tabbed UI refactor (Rotation, Config, Info). Added Info tab with repository link and dedication. |

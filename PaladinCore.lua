@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.8.0"
+local PCA_VERSION = "1.8.1"
 
 local defaultOpener        = "Holy Strike"
 local defaultOpenerPrebuff = "Seal of Righteousness"
@@ -663,10 +663,13 @@ function paladincore()
     -- 1) ACQUIRE TARGET
     ----------------------------------------------------------------
     if not UnitExists("target") or UnitIsDead("target") then
-        dbg("|cffff0000[PCA] No/dead target → TargetNearestEnemy|r")
-        TargetNearestEnemy()
+        if UnitAffectingCombat("player") then
+            dbg("|cffff0000[PCA] No/dead target in combat → TargetNearestEnemy|r")
+            TargetNearestEnemy()
+        end
+
         if not UnitExists("target") or UnitIsDead("target") then
-            -- No target found — apply pre-buff if configured
+            -- No target found (or out of combat) — apply pre-buff if configured
             local inCombat = UnitAffectingCombat("player")
             if not inCombat then
                 if not IsSeal(openerSpell) then
@@ -679,7 +682,7 @@ function paladincore()
                     end
                 end
             else
-                -- In combat with no target — maintain first rotation seal
+                -- In combat with no target (and TargetNearestEnemy failed) — maintain first rotation seal
                 local rotSpells = GetRotationSpells()
                 for _, spell in ipairs(rotSpells) do
                     if spell and IsSeal(spell) and not PlayerHasSeal(spell) then
