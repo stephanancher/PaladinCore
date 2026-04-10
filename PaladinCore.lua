@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.8.9"
+local PCA_VERSION = "1.8.10"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -248,6 +248,18 @@ end
 
 local function PCA_IsExorcismPriority()
     return PCA_Config.FightingUndead and IsTargetUndead()
+end
+
+local function UnitIsCasting(unit)
+    if UnitCastingInfo then
+        local name = UnitCastingInfo(unit)
+        if name then return true end
+    end
+    if UnitChannelInfo then
+        local name = UnitChannelInfo(unit)
+        if name then return true end
+    end
+    return false
 end
 
 local function PlayerHasSeal(sealName)
@@ -629,6 +641,8 @@ function PCA_OnLoad()
     if PCA_Config.AssistTankName == nil then PCA_Config.AssistTankName = ""    end
     if PCA_Config.MinimapPos     == nil then PCA_Config.MinimapPos     = 45   end
     if PCA_Config.SmartTargeting == nil then PCA_Config.SmartTargeting = true end
+    if PCA_Config.SmartTargeting == nil then PCA_Config.SmartTargeting = true end
+    if PCA_Config.AutoStun      == nil then PCA_Config.AutoStun      = false end
     if PCA_Config.UIScale        == nil then PCA_Config.UIScale        = 0.85 end
 
     -- Set title to full name + version
@@ -865,6 +879,17 @@ function paladincore()
         PCA_EnsureAutoAttack()
     end
 
+    -- ── 0.1) AUTO STUN (Highest Priority) ───────────────────────────────────
+    if PCA_Config.AutoStun and UnitExists("target") and not UnitIsDead("target") then
+        if UnitIsCasting("target") and CheckInteractDistance("target", 3) then
+            if IsSpellReady("Hammer of Justice") then
+                dbg("|cffff0000[PCA] Auto-Stun: Casting Hammer of Justice|r")
+                CastSpellByName("Hammer of Justice")
+                return
+            end
+        end
+    end
+
     -- ── 1) BUFF LOGIC ────────────────────────────────────────────────────────
     -- We check these first and return early if a cast is triggered.
     if PCA_EnsureRF()        then return end
@@ -1044,6 +1069,11 @@ end
 local function PCA_GetSmartTargetingText()
     if PCA_Config.SmartTargeting then return "Smart Targeting: ON"
     else return "Smart Targeting: OFF" end
+end
+
+local function PCA_GetAutoStunText()
+    if PCA_Config.AutoStun then return "Auto Stun: ON"
+    else return "Auto Stun: OFF" end
 end
 
 local function PCA_GetAssistText()
@@ -1372,6 +1402,18 @@ local function PCA_BuildMenu()
     PCA_Refs.smartTargetingBtnRef = smartTargetingBtn
     ySet = ySet - 26
 
+    local autoStunBtn = CreateFrame("Button", "PCAAutoStunBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
+    autoStunBtn:SetWidth(210)
+    autoStunBtn:SetHeight(22)
+    autoStunBtn:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", 0, ySet)
+    autoStunBtn:SetText(PCA_GetAutoStunText())
+    autoStunBtn:SetScript("OnClick", function()
+        PCA_Config.AutoStun = not PCA_Config.AutoStun
+        autoStunBtn:SetText(PCA_GetAutoStunText())
+    end)
+    PCA_Refs.autoStunBtnRef = autoStunBtn
+    ySet = ySet - 26
+
     local debugBtn = CreateFrame("Button", "PCADebugBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
     debugBtn:SetWidth(210)
     debugBtn:SetHeight(22)
@@ -1543,6 +1585,7 @@ function PCA_OpenMenu()
     if PCA_Refs.debugBtnRef then PCA_Refs.debugBtnRef:SetText(PCA_GetDebugText()) end
     if PCA_Refs.fightingUndeadBtnRef then PCA_Refs.fightingUndeadBtnRef:SetText(PCA_GetFightingUndeadText()) end
     if PCA_Refs.smartTargetingBtnRef then PCA_Refs.smartTargetingBtnRef:SetText(PCA_GetSmartTargetingText()) end
+    if PCA_Refs.autoStunBtnRef then PCA_Refs.autoStunBtnRef:SetText(PCA_GetAutoStunText()) end
     if PCA_Refs.judgingBtnRef then PCA_Refs.judgingBtnRef:SetText(PCA_GetJudgingText()) end
     if PCA_Refs.assistBtnRef then PCA_Refs.assistBtnRef:SetText(PCA_GetAssistText()) end
     if PCA_Refs.rfBtnRef then PCA_Refs.rfBtnRef:SetText(PCA_GetRFText()) end
