@@ -67,44 +67,60 @@
     </Button>
 
     <Frame name="PCAFrame" hidden="true" movable="true" enableMouse="true">
-        <Size><AbsDimension x="260" y="640"/></Size>
+        <Size><AbsDimension x="330" y="500"/></Size>
         <Anchors>
             <Anchor point="CENTER"/>
         </Anchors>
-        <Backdrop bgFile="Interface\\DialogFrame\\UI-DialogBox-Background"
-                  edgeFile="Interface\\DialogFrame\\UI-DialogBox-Border"
+        <Backdrop bgFile="Interface\\Buttons\\UI-SliderBar-Background"
+                  edgeFile="Interface\\Tooltips\\UI-Tooltip-Border"
                   tile="true">
-            <BackgroundInsets><AbsInset left="11" right="12" top="12" bottom="11"/></BackgroundInsets>
-            <TileSize><AbsValue val="32"/></TileSize>
-            <EdgeSize><AbsValue val="32"/></EdgeSize>
+            <BackgroundInsets><AbsInset left="4" right="4" top="4" bottom="4"/></BackgroundInsets>
+            <TileSize><AbsValue val="16"/></TileSize>
+            <EdgeSize><AbsValue val="16"/></EdgeSize>
         </Backdrop>
         <Layers>
             <Layer level="BACKGROUND">
-                <Texture name="$parentSolidBg">
-                    <Anchors>
-                        <Anchor point="TOPLEFT">
-                            <Offset><AbsDimension x="11" y="-12"/></Offset>
-                        </Anchor>
-                        <Anchor point="BOTTOMRIGHT">
-                            <Offset><AbsDimension x="-12" y="11"/></Offset>
-                        </Anchor>
+                <!-- Outer dark layer -->
+                <Texture name="$parentBg">
+                    <Anchors><Anchor point="TOPLEFT"/><Anchor point="BOTTOMRIGHT"/></Anchors>
+                    <Color r="0" g="0" b="0" a="0.9"/>
+                </Texture>
+            </Layer>
+            <Layer level="BORDER">
+                <!-- Header bar area -->
+                <Texture name="$parentHeaderBg">
+                    <Size><AbsDimension y="55"/></Size>
+                    <Anchors><Anchor point="TOPLEFT"/><Anchor point="TOPRIGHT"/></Anchors>
+                    <Color r="0.1" g="0.1" b="0.1" a="1"/>
+                </Texture>
+                <Texture name="$parentContentBorder">
+                   <Anchors>
+                        <Anchor point="TOPLEFT" x="8" y="-55"/>
+                        <Anchor point="BOTTOMRIGHT" x="-8" y="8"/>
                     </Anchors>
-                    <Color r="0" g="0" b="0" a="1"/>
+                    <Color r="0.05" g="0.05" b="0.05" a="1"/>
                 </Texture>
             </Layer>
             <Layer level="ARTWORK">
-                <FontString name="PCATitle" inherits="GameFontNormalLarge">
+                <FontString name="PCATitle" inherits="GameFontNormalGroup" font="Fonts\\FRIZQT__.TTF" fontHeight="16">
                     <Anchors>
-                        <Anchor point="TOP" y="-14"/>
+                        <Anchor point="TOP" y="-12"/>
                     </Anchors>
-                    <Text>PaladinCore</Text>
+                    <Text>PALADIN CORE</Text>
+                    <Color r="1" g="1" b="1"/>
                 </FontString>
-                <FontString name="PCASubTitle" inherits="GameFontNormal">
+                <FontString name="PCASubTitle" inherits="GameFontNormalSmall" font="Fonts\\FRIZQT__.TTF" fontHeight="12">
                     <Anchors>
-                        <Anchor point="TOP" y="-32"/>
+                        <Anchor point="TOP" y="-28"/>
                     </Anchors>
-                    <Text></Text>
+                    <Text>ROTATION &amp; UTILITY</Text>
+                    <Color r="0.6" g="0.6" b="0.6"/>
                 </FontString>
+                <Texture name="$parentHeaderLine">
+                    <Size><AbsDimension x="314" y="1"/></Size>
+                    <Anchors><Anchor point="TOP" y="-54"/></Anchors>
+                    <Color r="1" g="0.82" b="0" a="0.5"/>
+                </Texture>
             </Layer>
         </Layers>
         <Scripts>

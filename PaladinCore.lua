@@ -1,6 +1,10 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.8.1"
+local PCA_VERSION = "1.8.7"
+
+-- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
+local PCA_Refs  = {}
+local PCA_State = { alerted = false, menuBuilt = false }
 
 local defaultOpener        = "Holy Strike"
 local defaultOpenerPrebuff = "Seal of Righteousness"
@@ -8,18 +12,13 @@ local defaultRot1          = "Seal of Righteousness"
 local defaultRot2          = "None"
 local defaultRot3          = "None"
 
--- Special alternating combo option (shares cooldown, handled in script)
 local COMBO_HS_CS = "Holy Strike / Crusader Strike"
 
-local menuBuilt        = false
-local debugBtnRef      = nil
-local alerted          = false
-local dragBtnTex       = nil
 local iconUpdateTick   = 0
 local cdScanTimer      = 0      -- counts up; re-scans for the macro action button every 5 s
-local palCoreCdFrame   = nil    -- action bar button frame for PalCore macro
 local autoAttackTick   = 0      -- counts icon ticks; fires auto-attack check every ~1 s
 local pca_autoAttacking = false  -- true once we have called AttackTarget(); reset by events
+local lastPartyCount   = 0      -- track group size to prevent sync spam
 
 -- Texture short-names for icon/buff detection.
 -- DevNote: Seal of the Crusader buff texture is "Spell_Holy_HolySmite"
@@ -34,6 +33,19 @@ local spellTextures = {
     ["Crusader Strike"]              = "Spell_Holy_CrusaderStrike",
     ["Holy Strike / Crusader Strike"] = "Ability_Paladin_HolyStrike",  -- default icon; alternates dynamically
     ["Consecration"]                 = "Spell_Holy_Consecration",
+    ["Devotion Aura"]                = "Spell_Holy_DevotionAura",
+    ["Retribution Aura"]             = "Spell_Holy_AuraOfLight",
+    ["Concentration Aura"]           = "Spell_Holy_MindSooth",
+    ["Shadow Resistance Aura"]       = "Spell_Holy_ShadowResistanceAura",
+    ["Righteous Fury"]               = "Spell_Holy_SealOfFury",
+    ["Blessing of Sanctuary"]        = "Spell_Nature_LightningShield",
+    ["Blessing of Kings"]            = "Spell_Magic_GreaterBlessingofKings",
+    ["Blessing of Salvation"]        = "Spell_Holy_SealOfSalvation",
+    ["Blessing of Wisdom"]           = "Spell_Holy_SealOfWisdom",
+    ["Blessing of Might"]            = "Spell_Holy_FistOfJustice",
+    ["Blessing of Light"]            = "Spell_Holy_PrayerOfHealing02",
+    ["Blessing of Freedom"]          = "Spell_Holy_SealOfValor",
+    ["Blessing of Protection"]       = "Spell_Holy_SealOfProtection",
 }
 
 -- Fast lookup: is this spell a seal?
@@ -57,6 +69,7 @@ local openerOptions = {
     "Seal of Wisdom",
     "Seal of Light",
     "Seal of Justice",
+    "Blessing of Sanctuary",
 }
 
 -- Pre-buff seal options (shown under opener; used when running in)
@@ -83,6 +96,29 @@ local rotationOptions = {
     "Crusader Strike",
     COMBO_HS_CS,
     "Consecration",
+    "Blessing of Sanctuary",
+}
+
+-- Aura dropdown options
+local auraOptions = {
+    "None",
+    "Devotion Aura",
+    "Retribution Aura",
+    "Concentration Aura",
+    "Shadow Resistance Aura",
+}
+
+-- Blessing dropdown options
+local blessingOptions = {
+    "None",
+    "Blessing of Kings",
+    "Blessing of Sanctuary",
+    "Blessing of Salvation",
+    "Blessing of Wisdom",
+    "Blessing of Might",
+    "Blessing of Light",
+    "Blessing of Freedom",
+    "Blessing of Protection",
 }
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
@@ -114,6 +150,25 @@ local function PCA_SendSync(msg)
     end
 end
 
+local function PCA_DebugBuffs()
+    DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00PaladinCore — Player buffs:|r")
+    local i = 1
+    while true do
+        local texture = UnitBuff("player", i)
+        if not texture then break end
+        DEFAULT_CHAT_FRAME:AddMessage("  [" .. i .. "] " .. texture)
+        i = i + 1
+    end
+    DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00PaladinCore — Target debuffs:|r")
+    i = 1
+    while true do
+        local texture = UnitDebuff("target", i)
+        if not texture then break end
+        DEFAULT_CHAT_FRAME:AddMessage("  [" .. i .. "] " .. texture)
+        i = i + 1
+    end
+end
+
 -- ── Debug ─────────────────────────────────────────────────────────────────────
 
 local function dbg(msg)
@@ -139,6 +194,10 @@ local function IsSpellReady(name)
     local start, dur = GetSpellCooldown(slot, BOOKTYPE_SPELL)
     if start == 0 then return true end
     return (GetTime() - start) >= dur
+end
+
+local function PlayerKnowsBlessing(blessingName)
+    return FindSpell(blessingName) ~= nil
 end
 
 -- ── Auto-attack guardian ──────────────────────────────────────────────────────
@@ -296,6 +355,96 @@ local function PCA_GetNextSpellCooldownInfo()
         end
     end
     return spellCD("Judgement")  -- fallback filler
+end
+
+-- Checks if the configured aura is active; casts it if missing.
+local function PCA_EnsureAura()
+    local aura = PCA_Config.SelectedAura
+    if not aura or aura == "None" then return false end
+
+    local tex = spellTextures[aura]
+    if tex and not HasBuffTexture("player", tex) then
+        local slot = FindSpell(aura)
+        if slot then
+            local start, dur = GetSpellCooldown(slot, BOOKTYPE_SPELL)
+            if start > 0 and dur > 0 then return true end
+        end
+        dbg("|cff00ff00[PCA] Missing aura: Casting " .. aura .. "|r")
+        CastSpellByName(aura)
+        return true
+    end
+    return false
+end
+
+local function PCA_GetRFText()
+    if PCA_Config.MaintainRF then return "Righteous Fury: ON"
+    else return "Righteous Fury: OFF" end
+end
+
+local lastRFAttempt = 0
+-- Checks if Righteous Fury is active when enabled; casts it if missing.
+local function PCA_EnsureRF()
+    if not PCA_Config.MaintainRF then return false end
+
+    -- Use a broader pattern 'sealoffury' to catch variations in icon paths
+    if not HasBuffTexture("player", "sealoffury") then
+        local slot = FindSpell("Righteous Fury")
+        if not slot then
+            dbg("|cffff4444[PCA] Error: 'Righteous Fury' spell not found in spellbook!|r")
+            return false
+        end
+
+        local start, dur = GetSpellCooldown(slot, BOOKTYPE_SPELL)
+        if start > 0 and dur > 0 then return true end
+
+        -- Rate limit the debug message to avoid chat spam if the cast fails
+        if GetTime() - lastRFAttempt > 5 then
+            dbg("|cff00ff00[PCA] Missing Righteous Fury: Casting|r")
+            lastRFAttempt = GetTime()
+        end
+
+        local spellName = GetSpellName(slot, BOOKTYPE_SPELL)
+        CastSpellByName(spellName)
+        return true
+    end
+    return false
+end
+
+local function PCA_GetBlessingText()
+    local blessing = PCA_Config.SelectedBlessing or "None"
+    return "Blessing: " .. blessing
+end
+
+local lastBlessingAttempt = 0
+-- Checks if the selected blessing is active; casts it if missing.
+local function PCA_EnsureBlessing()
+    local blessing = PCA_Config.SelectedBlessing
+    if not blessing or blessing == "None" then return false end
+
+    local tex = spellTextures[blessing]
+    if tex and not HasBuffTexture("player", tex) then
+        local slot = FindSpell(blessing)
+        if not slot then
+            dbg("|cffff4444[PCA] Error: '" .. blessing .. "' spell not found in spellbook!|r")
+            return false
+        end
+
+        local start, dur = GetSpellCooldown(slot, BOOKTYPE_SPELL)
+        if start > 0 and dur > 0 then return true end
+
+        -- Rate limit the debug message to avoid chat spam if the cast fails
+        if GetTime() - lastBlessingAttempt > 5 then
+            dbg("|cff00ff00[PCA] Missing " .. blessing .. ": Casting|r")
+            lastBlessingAttempt = GetTime()
+        end
+
+        -- Target self to ensure blessing casts on player, not target
+        TargetUnit("player")
+        local spellName = GetSpellName(slot, BOOKTYPE_SPELL)
+        CastSpellByName(spellName)
+        return true
+    end
+    return false
 end
 
 -- Find the first seal in the rotation slots (used for pre-buffing).
@@ -460,8 +609,17 @@ function PCA_OnLoad()
     if not PCA_Config.RotationSpell1 then PCA_Config.RotationSpell1 = defaultRot1          end
     if not PCA_Config.RotationSpell2 then PCA_Config.RotationSpell2 = defaultRot2          end
     if not PCA_Config.RotationSpell3 then PCA_Config.RotationSpell3 = defaultRot3          end
+    if not PCA_Config.SelectedAura   then PCA_Config.SelectedAura   = "None"               end
+    if not PCA_Config.SelectedBlessing then PCA_Config.SelectedBlessing = "None"            end
+    if PCA_Config.MaintainRF     == nil then PCA_Config.MaintainRF     = false             end
+    if PCA_Config.MaintainBS     == nil then PCA_Config.MaintainBS     = false             end  -- legacy, can remove later
     if PCA_Config.Debug          == nil then PCA_Config.Debug          = false end
     if PCA_Config.FightingUndead == nil then PCA_Config.FightingUndead = false end
+
+    -- Migrate MaintainBS to SelectedBlessing
+    if PCA_Config.MaintainBS and PCA_Config.SelectedBlessing == "None" then
+        PCA_Config.SelectedBlessing = "Blessing of Sanctuary"
+    end
 
     -- Migrate StopJudging -> JudgingEnabled
     if PCA_Config.StopJudging ~= nil then
@@ -477,9 +635,11 @@ function PCA_OnLoad()
 
     -- Set title to full name + version
     if PCATitle then
+        PCATitle:SetFont("Fonts\\FRIZQT__.TTF", 16)
         PCATitle:SetText("PaladinCore  V" .. PCA_VERSION)
     end
     if PCASubTitle then
+        PCASubTitle:SetFont("Fonts\\FRIZQT__.TTF", 12)
         PCASubTitle:SetText("")
     end
 
@@ -523,18 +683,31 @@ function PCA_OnLoad()
                 PCA_MinimapButton_UpdatePosition()
             end
         elseif event == "PLAYER_ENTERING_WORLD" then
+            lastPartyCount = GetNumPartyMembers()
             PCA_SendSync("VER:" .. PCA_VERSION)
         elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
-            PCA_SendSync("VER:" .. PCA_VERSION)
+            local count = GetNumPartyMembers() + GetNumRaidMembers()
+            if count ~= lastPartyCount then
+                PCA_SendSync("VER:" .. PCA_VERSION)
+                -- Send advertisement when joining a group for the first time
+                if lastPartyCount == 0 and count > 0 then
+                    local chatChannel = GetNumRaidMembers() > 0 and "RAID" or "PARTY"
+                    SendChatMessage("I am powered by the mighty PaladinCore get yours at https://github.com/stephanancher/PaladinCore", chatChannel)
+                end
+                lastPartyCount = count
+            end
         elseif event == "CHAT_MSG_ADDON" then
             -- arg1: prefix, arg2: msg, arg3: channel, arg4: sender
             if arg1 == "PalCore" and arg4 ~= UnitName("player") then
                 if string.find(arg2, "VER:") then
                     local remoteVer = string.sub(arg2, 5)
-                    if PCA_IsNewer(remoteVer, PCA_VERSION) and not alerted then
+                    dbg("|cff88ccff[PCA Sync] Received v" .. remoteVer .. " from " .. arg4 .. "|r")
+                    if PCA_IsNewer(remoteVer, PCA_VERSION) and not PCA_State.alerted then
                         DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00[PaladinCore]|r A newer version (|cffffffffv" .. remoteVer .. "|r) is available! Check your GitHub for updates.")
-                        alerted = true
+                        PCA_State.alerted = true
                     end
+                elseif arg2 == "REQ" then
+                    PCA_SendSync("VER:" .. PCA_VERSION)
                 end
             end
         elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_TARGET_CHANGED" then
@@ -548,15 +721,33 @@ function PCA_OnLoad()
         if iconUpdateTick < 0.33 then return end
         iconUpdateTick = 0
 
+        -- Periodically ensure aura is active (automatic maintenance)
+        if not auraAutoTick then auraAutoTick = 0 end
+        auraAutoTick = auraAutoTick + 0.33
+        if auraAutoTick >= 2.0 then
+            auraAutoTick = 0
+            if not UnitIsDeadOrGhost("player") then
+                -- Try to maintain all independently
+                local auraTargeted = PCA_EnsureAura()
+                local rfTargeted   = PCA_EnsureRF()
+                local blessingTargeted = PCA_EnsureBlessing()
+                
+                if (auraTargeted or rfTargeted or blessingTargeted) and UnitAffectingCombat("player") then
+                    -- In standard 1.12, CastSpellByName might fail in combat via OnUpdate
+                    -- We'll rely on the player's next macro click to catch it if so.
+                end
+            end
+        end
+
         local shortName, isReady = PCA_GetNextActionInfo()
 
         -- Dim the settings-panel drag button when next spell is on cooldown
-        if dragBtnTex then
-            dragBtnTex:SetTexture("Interface\\Icons\\" .. shortName)
+        if PCA_Refs.dragBtnTex then
+            PCA_Refs.dragBtnTex:SetTexture("Interface\\Icons\\" .. shortName)
             if isReady then
-                dragBtnTex:SetVertexColor(1, 1, 1)
+                PCA_Refs.dragBtnTex:SetVertexColor(1, 1, 1)
             else
-                dragBtnTex:SetVertexColor(0.35, 0.35, 0.35)
+                PCA_Refs.dragBtnTex:SetVertexColor(0.35, 0.35, 0.35)
             end
         end
 
@@ -567,9 +758,9 @@ function PCA_OnLoad()
 
             -- Re-scan for the action bar button every 5 seconds
             cdScanTimer = cdScanTimer + 0.33
-            if cdScanTimer >= 5 or palCoreCdFrame == nil then
+            if cdScanTimer >= 5 or PCA_Refs.palCoreCdFrame == nil then
                 cdScanTimer = 0
-                palCoreCdFrame = nil
+                PCA_Refs.palCoreCdFrame = nil
 
                 -- GetActionText is vanilla-1.12 compatible; returns macro name for macro slots.
                 if GetActionText then
@@ -577,12 +768,12 @@ function PCA_OnLoad()
                     local pageOff = (page - 1) * 12
                     for i = 1, 12 do
                         if GetActionText(pageOff + i) == "PalCore" then
-                            palCoreCdFrame = _G["ActionButton" .. i]  -- the button frame itself
+                            PCA_Refs.palCoreCdFrame = _G["ActionButton" .. i]  -- the button frame itself
                             break
                         end
                     end
 
-                    if not palCoreCdFrame then
+                    if not PCA_Refs.palCoreCdFrame then
                         local extraBars = {
                             { 24, "MultiBarBottomRightButton" },
                             { 36, "MultiBarBottomLeftButton"  },
@@ -592,19 +783,19 @@ function PCA_OnLoad()
                         for _, bc in ipairs(extraBars) do
                             for i = 1, 12 do
                                 if GetActionText(bc[1] + i) == "PalCore" then
-                                    palCoreCdFrame = _G[bc[2] .. i]
+                                    PCA_Refs.palCoreCdFrame = _G[bc[2] .. i]
                                     break
                                 end
                             end
-                            if palCoreCdFrame then break end
+                            if PCA_Refs.palCoreCdFrame then break end
                         end
                     end
                 end
             end
 
             -- Dim the action bar button when the next spell is on cooldown
-            if palCoreCdFrame then
-                palCoreCdFrame:SetAlpha(isReady and 1.0 or 0.45)
+            if PCA_Refs.palCoreCdFrame then
+                PCA_Refs.palCoreCdFrame:SetAlpha(isReady and 1.0 or 0.45)
             end
 
             -- Periodic auto-attack guardian (~every 1 s = 3 icon ticks)
@@ -651,7 +842,13 @@ end
 -- Combat:   check slots 1→2→3 in priority order each press, then Judgement
 
 function paladincore()
-    -- ── 0) ASSIST LOGIC ──────────────────────────────────────────────────────
+    -- ── 0) BUFF LOGIC ────────────────────────────────────────────────────────
+    -- We check these first and return early if a cast is triggered.
+    if PCA_EnsureRF()        then return end
+    if PCA_EnsureBlessing()  then return end
+    if PCA_EnsureAura()      then return end
+
+    -- ── 0.5) ASSIST LOGIC ────────────────────────────────────────────────────
     if PCA_Config.AssistEnabled and PCA_Config.AssistTankName and PCA_Config.AssistTankName ~= "" then
         TargetByName(PCA_Config.AssistTankName, true)
         AssistUnit("target")
@@ -779,6 +976,18 @@ function paladincore()
                 end
 
                 -- seal already active → fall through to next slot
+            elseif string.find(spell, "Blessing of") then
+                -- Blessings are handled by PCA_EnsureBlessing() in buff logic
+                -- but can also be manually triggered in rotation if desired
+                local tex = spellTextures[spell]
+                if tex and not HasBuffTexture("player", tex) then
+                    if IsSpellReady(spell) then
+                        dbg("|cff00ff00[PCA] Casting " .. spell .. "|r")
+                        TargetUnit("player")
+                        CastSpellByName(spell)
+                        return
+                    end
+                end
             elseif spell == COMBO_HS_CS then
                 local nextSpell = PCA_Config.HSCSToggle or "Holy Strike"
                 if IsSpellReady(nextSpell) then
@@ -831,10 +1040,6 @@ local function PCA_GetAssistText()
     if PCA_Config.AssistEnabled then return "Assist: YES"
     else return "Assist: NO" end
 end
-
-local fightingUndeadBtnRef = nil
-local judgingBtnRef        = nil
-local assistBtnRef         = nil
 
 -- ── Dropdown initializers ─────────────────────────────────────────────────────
 
@@ -918,34 +1123,70 @@ local function PCA_RotationDropdown3_Init()
     end
 end
 
+local function PCA_AuraDropdown_Init()
+    local current = PCA_Config.SelectedAura or "None"
+    for _, spell in ipairs(auraOptions) do
+        local capture = spell
+        local info = {}
+        info.text    = spell
+        info.checked = (spell == current)
+        info.func    = function()
+            PCA_Config.SelectedAura = capture
+            UIDropDownMenu_SetText(capture, PCA_AuraDropdown)
+            CloseDropDownMenus()
+        end
+        UIDropDownMenu_AddButton(info)
+    end
+end
+
+local function PCA_BlessingDropdown_Init()
+    local current = PCA_Config.SelectedBlessing or "None"
+    for _, blessing in ipairs(blessingOptions) do
+        if blessing == "None" or PlayerKnowsBlessing(blessing) then
+            local capture = blessing
+            local info = {}
+            info.text    = blessing
+            info.checked = (blessing == current)
+            info.func    = function()
+                PCA_Config.SelectedBlessing = capture
+                UIDropDownMenu_SetText(capture, PCA_BlessingDropdown)
+                CloseDropDownMenus()
+                if capture ~= "None" then
+                    PCA_EnsureBlessing()
+                end
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end
+end
+
 -- ── Build the menu ─────────────────────────────────────────────────────────────
 
 -- ── Build the menu ─────────────────────────────────────────────────────────────
-local pageRotation, pageSettings, pageInfo
-local tabBtnRot, tabBtnSet, tabBtnInf
 
 function PCA_SetTab(id)
+    PCA_Refs.pageRotation:Hide()
+    PCA_Refs.pageSettings:Hide()
+    PCA_Refs.pageBuffs:Hide()
+    PCA_Refs.pageInfo:Hide()
+    
+    PCA_Refs.tabBtnRot:SetBackdropColor(0, 0, 0, 0.4)
+    PCA_Refs.tabBtnSet:SetBackdropColor(0, 0, 0, 0.4)
+    PCA_Refs.tabBtnBuf:SetBackdropColor(0, 0, 0, 0.4)
+    PCA_Refs.tabBtnInf:SetBackdropColor(0, 0, 0, 0.4)
+
     if id == 1 then
-        pageRotation:Show()
-        pageSettings:Hide()
-        pageInfo:Hide()
-        tabBtnRot:LockHighlight()
-        tabBtnSet:UnlockHighlight()
-        tabBtnInf:UnlockHighlight()
+        PCA_Refs.pageRotation:Show()
+        PCA_Refs.tabBtnRot:SetBackdropColor(0.5, 0.1, 0.1, 0.8)
     elseif id == 2 then
-        pageRotation:Hide()
-        pageSettings:Show()
-        pageInfo:Hide()
-        tabBtnRot:UnlockHighlight()
-        tabBtnSet:LockHighlight()
-        tabBtnInf:UnlockHighlight()
+        PCA_Refs.pageSettings:Show()
+        PCA_Refs.tabBtnSet:SetBackdropColor(0.5, 0.1, 0.1, 0.8)
+    elseif id == 3 then
+        PCA_Refs.pageBuffs:Show()
+        PCA_Refs.tabBtnBuf:SetBackdropColor(0.5, 0.1, 0.1, 0.8)
     else
-        pageRotation:Hide()
-        pageSettings:Hide()
-        pageInfo:Show()
-        tabBtnRot:UnlockHighlight()
-        tabBtnSet:UnlockHighlight()
-        tabBtnInf:LockHighlight()
+        PCA_Refs.pageInfo:Show()
+        PCA_Refs.tabBtnInf:SetBackdropColor(0.5, 0.1, 0.1, 0.8)
     end
 end
 
@@ -953,28 +1194,61 @@ local function PCA_BuildMenu()
     local frame = PCAFrame
     
     -- ── Tab Buttons ──────────────────────────────────────────────────────────
-    local function MakeTab(text, id, xOff)
-        local btn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-        btn:SetWidth(75)
-        btn:SetHeight(22)
-        btn:SetPoint("TOPLEFT", frame, "TOPLEFT", xOff, -42)
-        btn:SetText(text)
+    local function MakeTab(text, id, x)
+        local btn = CreateFrame("Button", nil, frame)
+        btn:SetWidth(78)
+        btn:SetHeight(18)
+        btn:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -63)
+        btn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\UI-SliderBar-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 8, edgeSize = 8,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 }
+        })
+        btn:SetBackdropColor(0, 0, 0, 0.4)
+        btn:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.8)
+
+        local t = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        t:SetPoint("CENTER", btn, "CENTER")
+        t:SetText(text)
+        btn:SetFontString(t)
+
+        btn:SetScript("OnEnter", function() btn:SetBackdropBorderColor(1, 0.82, 0, 1) end)
+        btn:SetScript("OnLeave", function() btn:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.8) end)
         btn:SetScript("OnClick", function() PCA_SetTab(id) end)
         return btn
     end
 
-    tabBtnRot = MakeTab("Rotation", 1, 15)
-    tabBtnSet = MakeTab("Config",   2, 92)
-    tabBtnInf = MakeTab("Info",     3, 169)
+    PCA_Refs.tabBtnRot = MakeTab("Rotation", 1, 10)
+    PCA_Refs.tabBtnSet = MakeTab("Config",   2, 88)
+    PCA_Refs.tabBtnBuf = MakeTab("Buffs",    3, 166)
+    PCA_Refs.tabBtnInf = MakeTab("Info",     4, 244)
 
-    -- ── Rotation Page ────────────────────────────────────────────────────────
-    pageRotation = CreateFrame("Frame", nil, frame)
-    pageRotation:SetAllPoints()
-    
+    -- ── Content Border ───────────────────────────────────────────────────────
+    local contentArea = CreateFrame("Frame", nil, frame)
+    contentArea:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -55)
+    contentArea:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -8, 8)
+    contentArea:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+    })
+    contentArea:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
+
+    -- ── Layout Helpers ──────────────────────────────────────────────────────
     local function MakeLabel(p, text, yOff)
         local lbl = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         lbl:SetPoint("TOP", p, "TOP", 0, yOff)
         lbl:SetText(text)
+        lbl:SetTextColor(1, 0.9, 0)
+        return lbl
+    end
+
+    local function MakeLabelSmall(p, text, yOff)
+        local lbl = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        lbl:SetPoint("TOP", p, "TOP", 0, yOff)
+        lbl:SetText(text)
+        lbl:SetTextColor(0.7, 0.7, 0.7)
+        return lbl
     end
 
     local function MakeDropdown(p, globalName, initFunc, configKey, defaultVal, yOff)
@@ -986,108 +1260,61 @@ local function PCA_BuildMenu()
         return dd
     end
 
-    local yRot = -75
-    MakeLabel(pageRotation, "|cffffcc00Opener Spell:|r", yRot)
+    -- ── Rotation Page ────────────────────────────────────────────────────────
+    PCA_Refs.pageRotation = CreateFrame("Frame", nil, contentArea)
+    PCA_Refs.pageRotation:SetAllPoints()
+
+    local yRot = -45
+    MakeLabel(PCA_Refs.pageRotation, "Opener Spell", yRot)
     yRot = yRot - 18
-    MakeDropdown(pageRotation, "PCAOpenerDropdown", PCA_OpenerDropdown_Init, "OpenerSpell", defaultOpener, yRot)
+    MakeDropdown(PCA_Refs.pageRotation, "PCAOpenerDropdown", PCA_OpenerDropdown_Init, "OpenerSpell", defaultOpener, yRot)
     yRot = yRot - 40
 
-    MakeLabel(pageRotation, "|cffaaaaaa  └ Pre-buff (out of range):|r", yRot)
+    MakeLabelSmall(PCA_Refs.pageRotation, "  └ Pre-buff (out of range)", yRot)
     yRot = yRot - 18
-    MakeDropdown(pageRotation, "PCAOpenerPrebuffDropdown", PCA_OpenerPrebuffDropdown_Init, "OpenerPrebuff", defaultOpenerPrebuff, yRot)
+    MakeDropdown(PCA_Refs.pageRotation, "PCAOpenerPrebuffDropdown", PCA_OpenerPrebuffDropdown_Init, "OpenerPrebuff", defaultOpenerPrebuff, yRot)
     yRot = yRot - 40
 
-    MakeLabel(pageRotation, "|cff88ccff1. Rotation Spell  (highest priority)|r", yRot)
+    MakeLabel(PCA_Refs.pageRotation, "1. Rotation Spell", yRot)
     yRot = yRot - 18
-    MakeDropdown(pageRotation, "PCARotationDropdown1", PCA_RotationDropdown1_Init, "RotationSpell1", defaultRot1, yRot)
+    MakeDropdown(PCA_Refs.pageRotation, "PCARotationDropdown1", PCA_RotationDropdown1_Init, "RotationSpell1", defaultRot1, yRot)
     yRot = yRot - 40
 
-    MakeLabel(pageRotation, "|cff88ccff2. Rotation Spell|r", yRot)
+    MakeLabel(PCA_Refs.pageRotation, "2. Rotation Spell", yRot)
     yRot = yRot - 18
-    MakeDropdown(pageRotation, "PCARotationDropdown2", PCA_RotationDropdown2_Init, "RotationSpell2", defaultRot2, yRot)
+    MakeDropdown(PCA_Refs.pageRotation, "PCARotationDropdown2", PCA_RotationDropdown2_Init, "RotationSpell2", defaultRot2, yRot)
     yRot = yRot - 40
 
-    MakeLabel(pageRotation, "|cff88ccff3. Rotation Spell  (lowest priority)|r", yRot)
+    MakeLabel(PCA_Refs.pageRotation, "3. Rotation Spell", yRot)
     yRot = yRot - 18
-    MakeDropdown(pageRotation, "PCARotationDropdown3", PCA_RotationDropdown3_Init, "RotationSpell3", defaultRot3, yRot)
-    yRot = yRot - 45
+    MakeDropdown(PCA_Refs.pageRotation, "PCARotationDropdown3", PCA_RotationDropdown3_Init, "RotationSpell3", defaultRot3, yRot)
+    yRot = yRot - 38
 
-    local divider = pageRotation:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    divider:SetPoint("TOP", pageRotation, "TOP", 0, yRot)
-    divider:SetText("|cffffcc00─────  Drag to Action Bar  ─────|r")
-    yRot = yRot - 22
-
-    local dragBtn = CreateFrame("Frame", "PCADragBtn", pageRotation)
-    dragBtn:SetWidth(36)
-    dragBtn:SetHeight(36)
-    dragBtn:SetPoint("TOP", pageRotation, "TOP", -55, yRot - 2)
-    dragBtn:EnableMouse(true)
-    dragBtn:RegisterForDrag("LeftButton")
-    dragBtn:SetBackdrop({
-        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    dragBtn:SetBackdropColor(0.05, 0.05, 0.4, 0.95)
-    dragBtn:SetBackdropBorderColor(0.8, 0.7, 0.2, 1)
-
-    local initTex = spellTextures[PCA_Config.RotationSpell1 or defaultRot1] or "Ability_ThunderBolt"
-    local dragTex = dragBtn:CreateTexture(nil, "ARTWORK")
-    dragTex:SetTexture("Interface\\Icons\\" .. initTex)
-    dragTex:SetPoint("TOPLEFT",     dragBtn, "TOPLEFT",     3, -3)
-    dragTex:SetPoint("BOTTOMRIGHT", dragBtn, "BOTTOMRIGHT", -3,  3)
-    dragBtnTex = dragTex
-
-    local dragHint = pageRotation:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    dragHint:SetPoint("LEFT", dragBtn, "RIGHT", 6, 0)
-    dragHint:SetJustifyH("LEFT")
-    dragHint:SetText("|cffaaaaaa← Drag onto\nan action bar slot|r")
-
-    dragBtn:SetScript("OnDragStart", function()
-        local idx = PCA_EnsureMacro()
-        if idx and idx > 0 then PickupMacro(idx)
-        else DEFAULT_CHAT_FRAME:AddMessage("|cffff4444PaladinCore:|r Could not create macro — macro list may be full.") end
-    end)
-    dragBtn:SetScript("OnEnter", function()
-        dragBtn:SetBackdropColor(0.1, 0.1, 0.6, 1)
-        dragBtn:SetBackdropBorderColor(1, 0.9, 0.3, 1)
-        GameTooltip:SetOwner(dragBtn, "ANCHOR_RIGHT")
-        GameTooltip:AddLine("PaladinCore Rotation", 1, 1, 0)
-        GameTooltip:AddLine("Drag to an action bar slot.", 0.7, 0.7, 0.7)
-        GameTooltip:AddLine("Runs your full seal rotation.", 0.7, 0.7, 0.7)
-        GameTooltip:Show()
-    end)
-    dragBtn:SetScript("OnLeave", function()
-        dragBtn:SetBackdropColor(0.05, 0.05, 0.4, 0.95)
-        dragBtn:SetBackdropBorderColor(0.8, 0.7, 0.2, 1)
-        GameTooltip:Hide()
-    end)
-
-    -- ── Settings Page ────────────────────────────────────────────────────────
-    pageSettings = CreateFrame("Frame", nil, frame)
-    pageSettings:SetAllPoints()
-    pageSettings:Hide()
-
-    local ySet = -75
-    local judgingBtn = CreateFrame("Button", "PCAJudgingBtn", pageSettings, "UIPanelButtonTemplate")
+    local judgingBtn = CreateFrame("Button", "PCAJudgingBtn", PCA_Refs.pageRotation, "UIPanelButtonTemplate")
     judgingBtn:SetWidth(210)
     judgingBtn:SetHeight(22)
-    judgingBtn:SetPoint("TOP", pageSettings, "TOP", 0, ySet)
+    judgingBtn:SetPoint("TOP", PCA_Refs.pageRotation, "TOP", 0, yRot)
     judgingBtn:SetText(PCA_GetJudgingText())
     judgingBtn:SetScript("OnClick", function()
         PCA_Config.JudgingEnabled = not (PCA_Config.JudgingEnabled ~= false)
         judgingBtn:SetText(PCA_GetJudgingText())
     end)
-    judgingBtnRef = judgingBtn
-    ySet = ySet - 30
+    PCA_Refs.judgingBtnRef = judgingBtn
+    yRot = yRot - 35
 
-    MakeLabel(pageSettings, "|cffffcc00Tank Name (for Assist):|r", ySet)
+
+    -- ── Settings Page ────────────────────────────────────────────────────────
+    PCA_Refs.pageSettings = CreateFrame("Frame", nil, contentArea)
+    PCA_Refs.pageSettings:SetAllPoints()
+    PCA_Refs.pageSettings:Hide()
+
+    local ySet = -45
+    MakeLabel(PCA_Refs.pageSettings, "Tank Name (for Assist)", ySet)
     ySet = ySet - 18
-    local editBox = CreateFrame("EditBox", "PCATankNameEdit", pageSettings, "InputBoxTemplate")
+    local editBox = CreateFrame("EditBox", "PCATankNameEdit", PCA_Refs.pageSettings, "InputBoxTemplate")
     editBox:SetWidth(180)
     editBox:SetHeight(20)
-    editBox:SetPoint("TOP", pageSettings, "TOP", 0, ySet)
+    editBox:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", 0, ySet)
     editBox:SetAutoFocus(false)
     editBox:SetText(PCA_Config.AssistTankName or "")
     editBox:SetScript("OnEnterPressed", function()
@@ -1099,50 +1326,50 @@ local function PCA_BuildMenu()
     end)
     ySet = ySet - 26
 
-    local assistBtn = CreateFrame("Button", "PCAAssistBtn", pageSettings, "UIPanelButtonTemplate")
+    local assistBtn = CreateFrame("Button", "PCAAssistBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
     assistBtn:SetWidth(210)
     assistBtn:SetHeight(22)
-    assistBtn:SetPoint("TOP", pageSettings, "TOP", 0, ySet)
+    assistBtn:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", 0, ySet)
     assistBtn:SetText(PCA_GetAssistText())
     assistBtn:SetScript("OnClick", function()
         PCA_Config.AssistEnabled = not PCA_Config.AssistEnabled
         assistBtn:SetText(PCA_GetAssistText())
     end)
-    assistBtnRef = assistBtn
+    PCA_Refs.assistBtnRef = assistBtn
     ySet = ySet - 30
 
-    local fightingUndeadBtn = CreateFrame("Button", "PCAFightingUndeadBtn", pageSettings, "UIPanelButtonTemplate")
+    local fightingUndeadBtn = CreateFrame("Button", "PCAFightingUndeadBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
     fightingUndeadBtn:SetWidth(210)
     fightingUndeadBtn:SetHeight(22)
-    fightingUndeadBtn:SetPoint("TOP", pageSettings, "TOP", 0, ySet)
+    fightingUndeadBtn:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", 0, ySet)
     fightingUndeadBtn:SetText(PCA_GetFightingUndeadText())
     fightingUndeadBtn:SetScript("OnClick", function()
         PCA_Config.FightingUndead = not PCA_Config.FightingUndead
         fightingUndeadBtn:SetText(PCA_GetFightingUndeadText())
     end)
-    fightingUndeadBtnRef = fightingUndeadBtn
+    PCA_Refs.fightingUndeadBtnRef = fightingUndeadBtn
     ySet = ySet - 26
 
-    local debugBtn = CreateFrame("Button", "PCADebugBtn", pageSettings, "UIPanelButtonTemplate")
+    local debugBtn = CreateFrame("Button", "PCADebugBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
     debugBtn:SetWidth(210)
     debugBtn:SetHeight(22)
-    debugBtn:SetPoint("TOP", pageSettings, "TOP", 0, ySet)
+    debugBtn:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", 0, ySet)
     debugBtn:SetText(PCA_GetDebugText())
     debugBtn:SetScript("OnClick", function()
         PCA_Config.Debug = not PCA_Config.Debug
         debugBtn:SetText(PCA_GetDebugText())
     end)
-    debugBtnRef = debugBtn
+    PCA_Refs.debugBtnRef = debugBtn
     ySet = ySet - 40
 
-    local scaleLbl = pageSettings:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    scaleLbl:SetPoint("TOP", pageSettings, "TOP", -28, ySet)
+    local scaleLbl = PCA_Refs.pageSettings:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    scaleLbl:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", -28, ySet)
     scaleLbl:SetText("|cffaaaaaaScale:|r")
 
-    local scaleDownBtn = CreateFrame("Button", nil, pageSettings, "UIPanelButtonTemplate")
+    local scaleDownBtn = CreateFrame("Button", nil, PCA_Refs.pageSettings, "UIPanelButtonTemplate")
     scaleDownBtn:SetWidth(26)
     scaleDownBtn:SetHeight(18)
-    scaleDownBtn:SetPoint("TOP", pageSettings, "TOP", 14, ySet)
+    scaleDownBtn:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", 14, ySet)
     scaleDownBtn:SetText("-")
     scaleDownBtn:SetScript("OnClick", function()
         local s = math.max(0.5, (PCA_Config.UIScale or 0.85) - 0.05)
@@ -1150,10 +1377,10 @@ local function PCA_BuildMenu()
         PCAFrame:SetScale(s)
     end)
 
-    local scaleUpBtn = CreateFrame("Button", nil, pageSettings, "UIPanelButtonTemplate")
+    local scaleUpBtn = CreateFrame("Button", nil, PCA_Refs.pageSettings, "UIPanelButtonTemplate")
     scaleUpBtn:SetWidth(26)
     scaleUpBtn:SetHeight(18)
-    scaleUpBtn:SetPoint("TOP", pageSettings, "TOP", 44, ySet)
+    scaleUpBtn:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", 44, ySet)
     scaleUpBtn:SetText("+")
     scaleUpBtn:SetScript("OnClick", function()
         local s = math.min(1.5, (PCA_Config.UIScale or 0.85) + 0.05)
@@ -1161,19 +1388,107 @@ local function PCA_BuildMenu()
         PCAFrame:SetScale(s)
     end)
 
-    -- ── Info Page ────────────────────────────────────────────────────────────
-    pageInfo = CreateFrame("Frame", nil, frame)
-    pageInfo:SetAllPoints()
-    pageInfo:Hide()
+    -- ── Buffs Page ───────────────────────────────────────────────────────────
+    PCA_Refs.pageBuffs = CreateFrame("Frame", nil, contentArea)
+    PCA_Refs.pageBuffs:SetAllPoints()
+    PCA_Refs.pageBuffs:Hide()
 
-    local infoText = pageInfo:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    infoText:SetPoint("TOP", pageInfo, "TOP", 0, -80)
+    local yBuf = -45
+    MakeLabel(PCA_Refs.pageBuffs, "Desired Aura", yBuf)
+    yBuf = yBuf - 18
+    local ddAura = MakeDropdown(PCA_Refs.pageBuffs, "PCA_AuraDropdown", PCA_AuraDropdown_Init, "SelectedAura", "None", yBuf)
+    yBuf = yBuf - 40
+
+    local rfBtn = CreateFrame("Button", "PCARighteousFuryBtn", PCA_Refs.pageBuffs, "UIPanelButtonTemplate")
+    rfBtn:SetWidth(210)
+    rfBtn:SetHeight(22)
+    rfBtn:SetPoint("TOP", PCA_Refs.pageBuffs, "TOP", 0, yBuf)
+    rfBtn:SetText(PCA_GetRFText())
+    rfBtn:SetScript("OnClick", function()
+        PCA_Config.MaintainRF = not PCA_Config.MaintainRF
+        rfBtn:SetText(PCA_GetRFText())
+        if PCA_Config.MaintainRF then PCA_EnsureRF() end
+    end)
+    PCA_Refs.rfBtnRef = rfBtn
+    yBuf = yBuf - 35
+
+    MakeLabel(PCA_Refs.pageBuffs, "Desired Blessing", yBuf)
+    yBuf = yBuf - 18
+    local ddBlessing = MakeDropdown(PCA_Refs.pageBuffs, "PCA_BlessingDropdown", PCA_BlessingDropdown_Init, "SelectedBlessing", "None", yBuf)
+    yBuf = yBuf - 40
+    
+    local auraHint = PCA_Refs.pageBuffs:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    auraHint:SetPoint("TOP", PCA_Refs.pageBuffs, "TOP", 0, yBuf)
+    auraHint:SetWidth(200)
+    auraHint:SetText("|cffaaaaaaThe addon will automatically ensure\nthis aura is active whenever you\npress the rotation macro.|r")
+
+    -- ── Info Page ────────────────────────────────────────────────────────────
+    PCA_Refs.pageInfo = CreateFrame("Frame", nil, contentArea)
+    PCA_Refs.pageInfo:SetAllPoints()
+    PCA_Refs.pageInfo:Hide()
+
+    local yInf = -40
+    local infoText = PCA_Refs.pageInfo:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    infoText:SetPoint("TOP", PCA_Refs.pageInfo, "TOP", 0, yInf)
     infoText:SetWidth(220)
     infoText:SetJustifyH("CENTER")
     infoText:SetText("|cffffcc00For updates check:|r\nhttps://github.com/stephanancher/PaladinCore\n\n\n|cffffffffThis addon is made for my friend|r\n|cff00ff00Hyneron|r\n|cffffffffon Turtle WoW...|r\n\n|cffff99ffhugs|r")
+    
+    yInf = yInf - 140
+    local divider = PCA_Refs.pageInfo:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    divider:SetPoint("TOP", PCA_Refs.pageInfo, "TOP", 0, yInf)
+    divider:SetTextColor(1, 0.82, 0)
+    divider:SetText("─────  Drag to Action Bar  ─────")
+    yInf = yInf - 22
+
+    local dragBtn = CreateFrame("Frame", "PCADragBtn", PCA_Refs.pageInfo)
+    dragBtn:SetWidth(36)
+    dragBtn:SetHeight(36)
+    dragBtn:SetPoint("TOP", PCA_Refs.pageInfo, "TOP", -55, yInf - 2)
+    dragBtn:EnableMouse(true)
+    dragBtn:RegisterForDrag("LeftButton")
+    dragBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\UI-EmptySlot-White",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
+    })
+    dragBtn:SetBackdropColor(0.05, 0.05, 0.4, 0.95)
+    dragBtn:SetBackdropBorderColor(0.8, 0.7, 0.2, 1)
+
+    local initTex = spellTextures[PCA_Config.RotationSpell1 or defaultRot1] or "Ability_ThunderBolt"
+    local dragTex = dragBtn:CreateTexture(nil, "ARTWORK")
+    dragTex:SetTexture("Interface\\Icons\\" .. initTex)
+    dragTex:SetPoint("TOPLEFT",     dragBtn, "TOPLEFT",     3, -3)
+    dragTex:SetPoint("BOTTOMRIGHT", dragBtn, "BOTTOMRIGHT", -3,  3)
+    PCA_Refs.dragBtnTex = dragTex
+
+    local dragHint = PCA_Refs.pageInfo:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    dragHint:SetPoint("LEFT", dragBtn, "RIGHT", 6, 0)
+    dragHint:SetJustifyH("LEFT")
+    dragHint:SetText("|cffaaaaaa← Drag onto\nan action bar slot|r")
+
+    dragBtn:SetScript("OnDragStart", function()
+        PickupMacro("PalCore")
+    end)
+    dragBtn:SetScript("OnEnter", function()
+        dragBtn:SetBackdropColor(0.1, 0.1, 0.7, 1)
+        dragBtn:SetBackdropBorderColor(1, 1, 1, 1)
+        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+        GameTooltip:SetText("|cffffcc00PalCore Macro|r")
+        GameTooltip:AddLine("Drag this button to any action bar slot.", 1, 1, 1)
+        GameTooltip:AddLine("That slot will then show the next predicted", 0.7, 0.7, 0.7, 1)
+        GameTooltip:AddLine("spell and its cooldown.", 0.7, 0.7, 0.7, 1)
+        GameTooltip:Show()
+    end)
+    dragBtn:SetScript("OnLeave", function()
+        dragBtn:SetBackdropColor(0.05, 0.05, 0.4, 0.95)
+        dragBtn:SetBackdropBorderColor(0.8, 0.7, 0.2, 1)
+        GameTooltip:Hide()
+    end)
 
     PCA_SetTab(1)
-    menuBuilt = true
+    PCA_State.menuBuilt = true
 end
 
 function PCA_UpdateButtons()
@@ -1192,16 +1507,41 @@ function PCA_UpdateButtons()
     if PCARotationDropdown3 then
         UIDropDownMenu_SetText(PCA_Config.RotationSpell3 or defaultRot3, PCARotationDropdown3)
     end
+    if PCA_AuraDropdown then
+        UIDropDownMenu_SetText(PCA_Config.SelectedAura or "None", PCA_AuraDropdown)
+    end
+    if PCA_Refs.rfBtnRef then
+        PCA_Refs.rfBtnRef:SetText(PCA_GetRFText())
+    end
 end
 
 function PCA_OpenMenu()
-    if not menuBuilt then PCA_BuildMenu() end
+    if not PCA_State.menuBuilt then PCA_BuildMenu() end
     PCA_UpdateButtons()
-    if debugBtnRef then debugBtnRef:SetText(PCA_GetDebugText()) end
-    if fightingUndeadBtnRef then fightingUndeadBtnRef:SetText(PCA_GetFightingUndeadText()) end
-    if judgingBtnRef then judgingBtnRef:SetText(PCA_GetJudgingText()) end
-    if assistBtnRef then assistBtnRef:SetText(PCA_GetAssistText()) end
+    if PCA_Refs.debugBtnRef then PCA_Refs.debugBtnRef:SetText(PCA_GetDebugText()) end
+    if PCA_Refs.fightingUndeadBtnRef then PCA_Refs.fightingUndeadBtnRef:SetText(PCA_GetFightingUndeadText()) end
+    if PCA_Refs.judgingBtnRef then PCA_Refs.judgingBtnRef:SetText(PCA_GetJudgingText()) end
+    if PCA_Refs.assistBtnRef then PCA_Refs.assistBtnRef:SetText(PCA_GetAssistText()) end
+    if PCA_Refs.rfBtnRef then PCA_Refs.rfBtnRef:SetText(PCA_GetRFText()) end
     if PCATankNameEdit then PCATankNameEdit:SetText(PCA_Config.AssistTankName or "") end
     PCAFrame:SetScale(PCA_Config.UIScale or 0.85)
     PCAFrame:Show()
 end
+
+-- ── Slash Commands ────────────────────────────────────────────────────────────
+
+SLASH_PCA1 = "/pca"
+SlashCmdList["PCA"] = function(msg)
+    local cmd = string.lower(msg or "")
+    if string.find(cmd, "sync") then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00[PaladinCore]|r Requesting version from group...")
+        PCA_SendSync("REQ")
+    elseif string.find(cmd, "buffs") then
+        PCA_DebugBuffs()
+    else
+        PCA_OpenMenu()
+    end
+end
+
+SLASH_PCABUFFS1 = "/pcabuffs"
+SlashCmdList["PCABUFFS"] = PCA_DebugBuffs

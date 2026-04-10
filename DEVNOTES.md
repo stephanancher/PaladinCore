@@ -10,6 +10,9 @@
 > - **MAJOR** — full rotation redesign or breaking config changes
 
 ### Changelog
+| 1.8.4 | Throttled version sync to only fire when group size actually changes (prevents combat spam). |
+| 1.8.3 | Fixed slash command parsing (case-insensitive and better argument handling). |
+| 1.8.2 | Restored missing slash commands (/pca, /pcabuffs). Added `/pca sync` manual command. |
 | 1.8.1 | Restricted auto-targeting to combat only (prevents accidental long-range pulls with Exorcism). |
 | 1.8.0 | Added in-game version sync. Addon now checks for updates by communicating with other players in Guild/Party/Raid. |
 | 1.7.1 | Absolute priority for Exorcism against Undead/Demon targets (overrides all rotation steps). |
