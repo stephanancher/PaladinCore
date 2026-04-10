@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.8.7"
+local PCA_VERSION = "1.8.8"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -857,12 +857,11 @@ function paladincore()
     -- 1) ACQUIRE TARGET
     ----------------------------------------------------------------
     if not UnitExists("target") or UnitIsDead("target") then
-        if UnitAffectingCombat("player") then
-            dbg("|cffff0000[PCA] No/dead target in combat → TargetNearestEnemy|r")
-            TargetNearestEnemy()
-        end
+        dbg("|cffff0000[PCA] No/dead target → TargetNearestEnemy|r")
+        TargetNearestEnemy()
+    end
 
-        if not UnitExists("target") or UnitIsDead("target") then
+    if not UnitExists("target") or UnitIsDead("target") then
             -- No target found (or out of combat) — apply pre-buff if configured
             local inCombat = UnitAffectingCombat("player")
             if not inCombat then

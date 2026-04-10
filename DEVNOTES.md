@@ -10,6 +10,7 @@
 > - **MAJOR** — full rotation redesign or breaking config changes
 
 ### Changelog
+| 1.8.5 | Re-enabled auto-targeting out of combat for better usability. |
 | 1.8.4 | Throttled version sync to only fire when group size actually changes (prevents combat spam). |
 | 1.8.3 | Fixed slash command parsing (case-insensitive and better argument handling). |
 | 1.8.2 | Restored missing slash commands (/pca, /pcabuffs). Added `/pca sync` manual command. |
