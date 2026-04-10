@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.8.8"
+local PCA_VERSION = "1.8.9"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -205,7 +205,7 @@ end
 -- AttackTarget() is a toggle in vanilla WoW, so we only call it once per
 -- engagement. The flag is reset when the target changes or combat ends.
 local function PCA_EnsureAutoAttack()
-    if not UnitExists("target") or UnitIsDead("target") then
+    if not UnitExists("target") or UnitIsDead("target") or not UnitCanAttack("player", "target") then
         pca_autoAttacking = false   -- lost target; reset so we re-engage next target
         return
     end
@@ -370,7 +370,7 @@ local function PCA_EnsureAura()
             if start > 0 and dur > 0 then return true end
         end
         dbg("|cff00ff00[PCA] Missing aura: Casting " .. aura .. "|r")
-        CastSpellByName(aura)
+        CastSpellByName(aura, 1)
         return true
     end
     return false
@@ -404,7 +404,7 @@ local function PCA_EnsureRF()
         end
 
         local spellName = GetSpellName(slot, BOOKTYPE_SPELL)
-        CastSpellByName(spellName)
+        CastSpellByName(spellName, 1)
         return true
     end
     return false
@@ -438,7 +438,7 @@ local function PCA_EnsureBlessing()
             lastBlessingAttempt = GetTime()
         end
 
-        CastSpellByName(blessing)
+        CastSpellByName(blessing, 1)
         return true
     end
     return false
@@ -628,6 +628,7 @@ function PCA_OnLoad()
     if PCA_Config.AssistEnabled  == nil then PCA_Config.AssistEnabled  = false end
     if PCA_Config.AssistTankName == nil then PCA_Config.AssistTankName = ""    end
     if PCA_Config.MinimapPos     == nil then PCA_Config.MinimapPos     = 45   end
+    if PCA_Config.SmartTargeting == nil then PCA_Config.SmartTargeting = true end
     if PCA_Config.UIScale        == nil then PCA_Config.UIScale        = 0.85 end
 
     -- Set title to full name + version
@@ -672,7 +673,10 @@ function PCA_OnLoad()
     iconFrame:RegisterEvent("RAID_ROSTER_UPDATE")
     iconFrame:RegisterEvent("CHAT_MSG_ADDON")
     iconFrame:RegisterEvent("PLAYER_REGEN_ENABLED")   -- left combat
-    iconFrame:RegisterEvent("PLAYER_TARGET_CHANGED")  -- new target needs attacking
+    iconFrame:RegisterEvent("PLAYER_REGEN_DISABLED")  -- entered combat
+    iconFrame:RegisterEvent("PLAYER_TARGET_CHANGED")  -- new target
+    iconFrame:RegisterEvent("PLAYER_ENTER_COMBAT")    -- started auto-attack
+    iconFrame:RegisterEvent("PLAYER_LEAVE_COMBAT")    -- stopped auto-attack
 
     iconFrame:SetScript("OnEvent", function()
         if event == "VARIABLES_LOADED" then
@@ -707,8 +711,11 @@ function PCA_OnLoad()
                     PCA_SendSync("VER:" .. PCA_VERSION)
                 end
             end
-        elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_TARGET_CHANGED" then
-            -- Reset auto-attack flag so PCA_EnsureAutoAttack() will re-engage on next check
+        elseif event == "PLAYER_ENTER_COMBAT" then
+            pca_autoAttacking = true
+        elseif event == "PLAYER_LEAVE_COMBAT" then
+            pca_autoAttacking = false
+        elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_REGEN_DISABLED" then
             pca_autoAttacking = false
         end
     end)
@@ -839,35 +846,41 @@ end
 -- Combat:   check slots 1→2→3 in priority order each press, then Judgement
 
 function paladincore()
-    -- ── 0) BUFF LOGIC ────────────────────────────────────────────────────────
-    -- We check these first and return early if a cast is triggered.
-    if PCA_EnsureRF()        then return end
-    if PCA_EnsureBlessing()  then return end
-    if PCA_EnsureAura()      then return end
-
-    -- ── 0.5) ASSIST LOGIC ────────────────────────────────────────────────────
+    -- ── 0) TARGETING & AUTO-ATTACK ───────────────────────────────────────────
+    -- We acquire target and start attacking BEFORE buff checks.
+    -- This ensures auto-attack starts even if we return early for a GCD buff.
     if PCA_Config.AssistEnabled and PCA_Config.AssistTankName and PCA_Config.AssistTankName ~= "" then
         TargetByName(PCA_Config.AssistTankName, true)
         AssistUnit("target")
     end
 
-    local openerSpell = PCA_Config.OpenerSpell or defaultOpener
-
-    ----------------------------------------------------------------
-    -- 1) ACQUIRE TARGET
-    ----------------------------------------------------------------
     if not UnitExists("target") or UnitIsDead("target") then
-        dbg("|cffff0000[PCA] No/dead target → TargetNearestEnemy|r")
+        TargetNearestEnemy()
+    elseif PCA_Config.SmartTargeting and not CheckInteractDistance("target", 2) then
+        -- Current target is far (> 11yd). Try to find someone closer.
         TargetNearestEnemy()
     end
 
+    if UnitExists("target") and not UnitIsDead("target") and UnitCanAttack("player", "target") then
+        PCA_EnsureAutoAttack()
+    end
+
+    -- ── 1) BUFF LOGIC ────────────────────────────────────────────────────────
+    -- We check these first and return early if a cast is triggered.
+    if PCA_EnsureRF()        then return end
+    if PCA_EnsureBlessing()  then return end
+    if PCA_EnsureAura()      then return end
+
+    local openerSpell = PCA_Config.OpenerSpell or defaultOpener
+
+    ----------------------------------------------------------------
+    -- 2) PRE-BUFF / OPENER
+    ----------------------------------------------------------------
     if not UnitExists("target") or UnitIsDead("target") then
             -- No target found (or out of combat) — apply pre-buff if configured
             local inCombat = UnitAffectingCombat("player")
             if not inCombat then
-                if not IsSeal(openerSpell) then
-                    -- Opener is an attack spell — nothing to pre-buff here
-                else
+                if IsSeal(openerSpell) then
                     -- Opener is a seal — apply it
                     if not PlayerHasSeal(openerSpell) then
                         dbg("|cff00ff00[PCA] No Target: Applying opener " .. openerSpell .. "|r")
@@ -888,8 +901,7 @@ function paladincore()
             return
     end
 
-    if UnitHealth("target") <= 0 then
-        dbg("|cffff0000[PCA] Target HP <= 0 → abort|r")
+    if UnitHealth("target") <= 0 or not UnitCanAttack("player", "target") then
         return
     end
 
@@ -897,7 +909,6 @@ function paladincore()
     if PCA_IsExorcismPriority() and IsSpellReady("Exorcism") then
         dbg("|cffff9900[PCA] Priority Exorcism|r")
         CastSpellByName("Exorcism")
-        PCA_EnsureAutoAttack() -- ensure we engage
         return
     end
 
@@ -1028,6 +1039,11 @@ end
 local function PCA_GetJudgingText()
     if PCA_Config.JudgingEnabled ~= false then return "Judging: YES"
     else return "Judging: NO" end
+end
+
+local function PCA_GetSmartTargetingText()
+    if PCA_Config.SmartTargeting then return "Smart Targeting: ON"
+    else return "Smart Targeting: OFF" end
 end
 
 local function PCA_GetAssistText()
@@ -1342,6 +1358,18 @@ local function PCA_BuildMenu()
         fightingUndeadBtn:SetText(PCA_GetFightingUndeadText())
     end)
     PCA_Refs.fightingUndeadBtnRef = fightingUndeadBtn
+    ySet = ySet - 30
+
+    local smartTargetingBtn = CreateFrame("Button", "PCASmartTargetingBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
+    smartTargetingBtn:SetWidth(210)
+    smartTargetingBtn:SetHeight(22)
+    smartTargetingBtn:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", 0, ySet)
+    smartTargetingBtn:SetText(PCA_GetSmartTargetingText())
+    smartTargetingBtn:SetScript("OnClick", function()
+        PCA_Config.SmartTargeting = not PCA_Config.SmartTargeting
+        smartTargetingBtn:SetText(PCA_GetSmartTargetingText())
+    end)
+    PCA_Refs.smartTargetingBtnRef = smartTargetingBtn
     ySet = ySet - 26
 
     local debugBtn = CreateFrame("Button", "PCADebugBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
@@ -1514,6 +1542,7 @@ function PCA_OpenMenu()
     PCA_UpdateButtons()
     if PCA_Refs.debugBtnRef then PCA_Refs.debugBtnRef:SetText(PCA_GetDebugText()) end
     if PCA_Refs.fightingUndeadBtnRef then PCA_Refs.fightingUndeadBtnRef:SetText(PCA_GetFightingUndeadText()) end
+    if PCA_Refs.smartTargetingBtnRef then PCA_Refs.smartTargetingBtnRef:SetText(PCA_GetSmartTargetingText()) end
     if PCA_Refs.judgingBtnRef then PCA_Refs.judgingBtnRef:SetText(PCA_GetJudgingText()) end
     if PCA_Refs.assistBtnRef then PCA_Refs.assistBtnRef:SetText(PCA_GetAssistText()) end
     if PCA_Refs.rfBtnRef then PCA_Refs.rfBtnRef:SetText(PCA_GetRFText()) end
