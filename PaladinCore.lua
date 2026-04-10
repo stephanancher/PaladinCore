@@ -886,7 +886,6 @@ function paladincore()
                 end
             end
             return
-        end
     end
 
     if UnitHealth("target") <= 0 then
