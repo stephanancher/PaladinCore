@@ -438,10 +438,7 @@ local function PCA_EnsureBlessing()
             lastBlessingAttempt = GetTime()
         end
 
-        -- Target self to ensure blessing casts on player, not target
-        TargetUnit("player")
-        local spellName = GetSpellName(slot, BOOKTYPE_SPELL)
-        CastSpellByName(spellName)
+        CastSpellByName(blessing)
         return true
     end
     return false
@@ -983,7 +980,6 @@ function paladincore()
                 if tex and not HasBuffTexture("player", tex) then
                     if IsSpellReady(spell) then
                         dbg("|cff00ff00[PCA] Casting " .. spell .. "|r")
-                        TargetUnit("player")
                         CastSpellByName(spell)
                         return
                     end
