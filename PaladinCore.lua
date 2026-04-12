@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "2.3.2"
+local PCA_VERSION = "2.3.3"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -1027,8 +1027,8 @@ function paladincore()
                 end
             end
             -- Pre-buff the chosen seal while running in / on GCD
-            local prebuff = PCA_Config.OpenerPrebuff or defaultOpenerPrebuff
-            if prebuff ~= "None" and not PlayerHasSeal(prebuff) then
+            local prebuff = GetEffectiveSpell(PCA_Config.OpenerPrebuff or defaultOpenerPrebuff)
+            if prebuff and prebuff ~= "None" and not PlayerHasSeal(prebuff) then
                 dbg("|cff00ff00[PCA] Opener: Pre-buffing " .. prebuff .. "|r")
                 CastSpellByName(prebuff)
             end
