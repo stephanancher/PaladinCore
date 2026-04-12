@@ -796,6 +796,7 @@ function PCA_OnLoad()
                 local _, _, caster, spell = string.find(arg1, "(.+) begins to cast (.+)%.")
                 if caster and caster == UnitName("target") then
                     PCA_State.castingTargetName = caster
+                    PCA_State.castingSpellName = spell
                     PCA_State.castStartTime = GetTime()
                     dbg("|cffff0000[PCA] Target is casting: " .. spell .. "|r")
                 end
