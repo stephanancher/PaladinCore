@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.9.0"
+local PCA_VERSION = "1.9.1"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -40,7 +40,7 @@ local spellTextures = {
     ["Seal of Righteousness"]        = "Ability_ThunderBolt",
     ["Seal of Command"]              = "Ability_Thunderbolt",
     ["Seal of Wisdom"]               = "Spell_Holy_RighteousnessAura",
-    ["Seal of Light"]                = "Spell_Holy_SealOfLight",
+    ["Seal of Light"]                = "Spell_holy_HealingAura",
     ["Seal of Justice"]              = "Spell_Holy_SealOfWrath",
     ["Seal of the Crusader"]         = "Spell_Holy_HolySmite",
     ["Holy Strike"]                  = "Ability_Paladin_HolyStrike",
@@ -1643,7 +1643,10 @@ local function PCA_BuildMenu()
     dragHint:SetText("|cffaaaaaa← Drag onto\nan action bar slot|r")
 
     dragBtn:SetScript("OnDragStart", function()
-        PickupMacro("PalCore")
+        local idx = PCA_GetMacroIndex("PalCore")
+        if idx and idx > 0 then
+            PickupMacro(idx)
+        end
     end)
     dragBtn:SetScript("OnEnter", function()
         dragBtn:SetBackdropColor(0.1, 0.1, 0.7, 1)
