@@ -20,6 +20,19 @@ local autoAttackTick   = 0      -- counts icon ticks; fires auto-attack check ev
 local pca_autoAttacking = false  -- true once we have called AttackTarget(); reset by events
 local lastPartyCount   = 0      -- track group size to prevent sync spam
 
+local pcaMessages = {
+    "I am powered by the mighty PaladinCore!",
+    "My bubble is on a cooldown, but PaladinCore is forever!",
+    "Warning: This Paladin is overclocked by PaladinCore. Mana not included.",
+    "I don't always judge, but when I do, PaladinCore does it better.",
+    "The Light provides, but PaladinCore automates!",
+    "You handle the mechanics, PaladinCore handles the rotation.",
+    "Blessing of Wisdom? No, I have Blessing of PaladinCore!",
+    "If you see me Hammer of Justice perfectly, thank PaladinCore.",
+    "PaladinCore: Making Retribution great again, one seal at a time.",
+    "Keep your seals sharp and your PaladinCore updated!"
+}
+
 -- Texture short-names for icon/buff detection.
 -- DevNote: Seal of the Crusader buff texture is "Spell_Holy_HolySmite"
 local spellTextures = {
@@ -139,6 +152,12 @@ local function PCA_IsNewer(remote, current)
     return false
 end
 
+local function PCA_GetRestedString()
+    local xp = GetXPExhaustion() or 0
+    local pct = math.floor(100 * xp / UnitXPMax("player"))
+    if pct >= 112 then return "MAX" else return pct .. "%" end
+end
+
 local function PCA_SendSync(msg)
     if GetNumRaidMembers() > 0 then
         SendAddonMessage("PalCore", msg, "RAID")
@@ -251,13 +270,14 @@ local function PCA_IsExorcismPriority()
 end
 
 local function UnitIsCasting(unit)
-    if UnitCastingInfo then
-        local name = UnitCastingInfo(unit)
-        if name then return true end
-    end
-    if UnitChannelInfo then
-        local name = UnitChannelInfo(unit)
-        if name then return true end
+    if unit ~= "target" then return false end
+    if not UnitExists("target") then return false end
+    
+    local name = UnitName("target")
+    if name == PCA_State.castingTargetName then
+        local elapsed = GetTime() - (PCA_State.castStartTime or 0)
+        -- Standard cast window; reset if too much time has passed
+        if elapsed < 3.5 then return true else PCA_State.castingTargetName = nil end
     end
     return false
 end
@@ -588,6 +608,7 @@ end
 -- ── Addon load ────────────────────────────────────────────────────────────────
 
 function PCA_OnLoad()
+    math.randomseed(GetTime())
     local _, class = UnitClass("player")
     if class ~= "PALADIN" then
         if PCAMinimapButton then PCAMinimapButton:Hide() end
@@ -599,6 +620,15 @@ function PCA_OnLoad()
     if PCAMinimapButton then 
         PCAMinimapButton:Show()
         PCA_MinimapButton_UpdatePosition()
+
+        PCAMinimapButton:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(this, "ANCHOR_LEFT")
+            GameTooltip:AddLine("|cffffcc00PaladinCore v" .. PCA_VERSION .. "|r")
+            GameTooltip:AddLine("Currently |cff00ff00" .. PCA_GetRestedString() .. "|r Rested", 1, 1, 1)
+            GameTooltip:AddLine("Left-Click: Open settings", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine("Drag to move", 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+        end)
     end
 
     -- Migrate old config keys
@@ -691,6 +721,12 @@ function PCA_OnLoad()
     iconFrame:RegisterEvent("PLAYER_TARGET_CHANGED")  -- new target
     iconFrame:RegisterEvent("PLAYER_ENTER_COMBAT")    -- started auto-attack
     iconFrame:RegisterEvent("PLAYER_LEAVE_COMBAT")    -- stopped auto-attack
+    
+    -- Casting Detection (Combat Log)
+    iconFrame:RegisterEvent("CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE")
+    iconFrame:RegisterEvent("CHAT_MSG_SPELL_HOSTILEPLAYER_BUFF")
+    iconFrame:RegisterEvent("CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE")
+    iconFrame:RegisterEvent("CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF")
 
     iconFrame:SetScript("OnEvent", function()
         if event == "VARIABLES_LOADED" then
@@ -700,6 +736,7 @@ function PCA_OnLoad()
         elseif event == "PLAYER_ENTERING_WORLD" then
             lastPartyCount = GetNumPartyMembers()
             PCA_SendSync("VER:" .. PCA_VERSION)
+            DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00PaladinCore v" .. PCA_VERSION .. "|r Loaded. Currently |cff00ff00" .. PCA_GetRestedString() .. "|r Rested.")
         elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
             local count = GetNumPartyMembers() + GetNumRaidMembers()
             if count ~= lastPartyCount then
@@ -707,7 +744,8 @@ function PCA_OnLoad()
                 -- Send advertisement when joining a group for the first time
                 if lastPartyCount == 0 and count > 0 then
                     local chatChannel = GetNumRaidMembers() > 0 and "RAID" or "PARTY"
-                    SendChatMessage("I am powered by the mighty PaladinCore get yours at https://github.com/stephanancher/PaladinCore", chatChannel)
+                    local msg = pcaMessages[math.random(1, table.getn(pcaMessages))]
+                    SendChatMessage(msg .. " (v" .. PCA_VERSION .. ") https://github.com/stephanancher/PaladinCore", chatChannel)
                 end
                 lastPartyCount = count
             end
@@ -725,12 +763,27 @@ function PCA_OnLoad()
                     PCA_SendSync("VER:" .. PCA_VERSION)
                 end
             end
+        elseif event == "PLAYER_TARGET_CHANGED" then
+            pca_autoAttacking = false
+            PCA_State.castingTargetName = nil
         elseif event == "PLAYER_ENTER_COMBAT" then
             pca_autoAttacking = true
         elseif event == "PLAYER_LEAVE_COMBAT" then
             pca_autoAttacking = false
         elseif event == "PLAYER_REGEN_ENABLED" or event == "PLAYER_REGEN_DISABLED" then
             pca_autoAttacking = false
+        elseif event == "CHAT_MSG_SPELL_HOSTILEPLAYER_DAMAGE" or 
+               event == "CHAT_MSG_SPELL_HOSTILEPLAYER_BUFF" or
+               event == "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_DAMAGE" or
+               event == "CHAT_MSG_SPELL_CREATURE_VS_CREATURE_BUFF" then
+            if arg1 then
+                local _, _, caster, spell = string.find(arg1, "(.+) begins to cast (.+)%.")
+                if caster and caster == UnitName("target") then
+                    PCA_State.castingTargetName = caster
+                    PCA_State.castStartTime = GetTime()
+                    dbg("|cffff0000[PCA] Target is casting: " .. spell .. "|r")
+                end
+            end
         end
     end)
 
@@ -1300,6 +1353,15 @@ local function PCA_BuildMenu()
         return dd
     end
 
+    local function SetTip(f, t)
+        f:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+            GameTooltip:SetText(t, 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+
     -- ── Rotation Page ────────────────────────────────────────────────────────
     PCA_Refs.pageRotation = CreateFrame("Frame", nil, contentArea)
     PCA_Refs.pageRotation:SetAllPoints()
@@ -1340,6 +1402,7 @@ local function PCA_BuildMenu()
         judgingBtn:SetText(PCA_GetJudgingText())
     end)
     PCA_Refs.judgingBtnRef = judgingBtn
+    SetTip(judgingBtn, "Toggles whether to use Judgement automatically or wait for manual control.")
     yRot = yRot - 35
 
 
@@ -1376,6 +1439,7 @@ local function PCA_BuildMenu()
         assistBtn:SetText(PCA_GetAssistText())
     end)
     PCA_Refs.assistBtnRef = assistBtn
+    SetTip(assistBtn, "Automatically target and assist the player named in the box above.")
     ySet = ySet - 30
 
     local fightingUndeadBtn = CreateFrame("Button", "PCAFightingUndeadBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
@@ -1388,6 +1452,7 @@ local function PCA_BuildMenu()
         fightingUndeadBtn:SetText(PCA_GetFightingUndeadText())
     end)
     PCA_Refs.fightingUndeadBtnRef = fightingUndeadBtn
+    SetTip(fightingUndeadBtn, "Gives Exorcism absolute priority if the target is Undead or a Demon.")
     ySet = ySet - 30
 
     local smartTargetingBtn = CreateFrame("Button", "PCASmartTargetingBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
@@ -1400,6 +1465,7 @@ local function PCA_BuildMenu()
         smartTargetingBtn:SetText(PCA_GetSmartTargetingText())
     end)
     PCA_Refs.smartTargetingBtnRef = smartTargetingBtn
+    SetTip(smartTargetingBtn, "Automatically targets the nearest enemy if you press the macro without a target.")
     ySet = ySet - 26
 
     local autoStunBtn = CreateFrame("Button", "PCAAutoStunBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
@@ -1412,6 +1478,7 @@ local function PCA_BuildMenu()
         autoStunBtn:SetText(PCA_GetAutoStunText())
     end)
     PCA_Refs.autoStunBtnRef = autoStunBtn
+    SetTip(autoStunBtn, "Automatically uses Hammer of Justice if the target begins casting within range.")
     ySet = ySet - 26
 
     local debugBtn = CreateFrame("Button", "PCADebugBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
@@ -1424,6 +1491,7 @@ local function PCA_BuildMenu()
         debugBtn:SetText(PCA_GetDebugText())
     end)
     PCA_Refs.debugBtnRef = debugBtn
+    SetTip(debugBtn, "Prints detailed combat logs to your chat window (Very spammy!).")
     ySet = ySet - 40
 
     local scaleLbl = PCA_Refs.pageSettings:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1440,6 +1508,7 @@ local function PCA_BuildMenu()
         PCA_Config.UIScale = s
         PCAFrame:SetScale(s)
     end)
+    SetTip(scaleDownBtn, "Decrease the scale of the settings window.")
 
     local scaleUpBtn = CreateFrame("Button", nil, PCA_Refs.pageSettings, "UIPanelButtonTemplate")
     scaleUpBtn:SetWidth(26)
@@ -1451,6 +1520,7 @@ local function PCA_BuildMenu()
         PCA_Config.UIScale = s
         PCAFrame:SetScale(s)
     end)
+    SetTip(scaleUpBtn, "Increase the scale of the settings window.")
 
     -- ── Buffs Page ───────────────────────────────────────────────────────────
     PCA_Refs.pageBuffs = CreateFrame("Frame", nil, contentArea)
@@ -1474,6 +1544,7 @@ local function PCA_BuildMenu()
         if PCA_Config.MaintainRF then PCA_EnsureRF() end
     end)
     PCA_Refs.rfBtnRef = rfBtn
+    SetTip(rfBtn, "Automatically maintains Righteous Fury buff if enabled.")
     yBuf = yBuf - 35
 
     MakeLabel(PCA_Refs.pageBuffs, "Desired Blessing", yBuf)
@@ -1550,6 +1621,13 @@ local function PCA_BuildMenu()
         dragBtn:SetBackdropBorderColor(0.8, 0.7, 0.2, 1)
         GameTooltip:Hide()
     end)
+
+    local reloadBtn = CreateFrame("Button", nil, PCA_Refs.pageInfo, "UIPanelButtonTemplate")
+    reloadBtn:SetWidth(120)
+    reloadBtn:SetHeight(26)
+    reloadBtn:SetPoint("BOTTOM", PCA_Refs.pageInfo, "BOTTOM", 0, 30)
+    reloadBtn:SetText("Reload UI")
+    reloadBtn:SetScript("OnClick", function() ReloadUI() end)
 
     PCA_SetTab(1)
     PCA_State.menuBuilt = true
