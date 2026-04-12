@@ -30,8 +30,8 @@
 ---
 
 ### Changelog
-| 2.3.2 | Cleanup: Removed legacy 'Mana Mode' comments and fixed duplicate UI script assignments. |
-| 2.3.1 | Added 'Maintain Utility' toggle. Allows keeping Wisdom/Light active for procs instead of auto-swapping to SoR. |
+| 2.3.2 | Cleanup: Removed legacy 'Mana Mode' comments and renamed 'Maintain Utility' toggle to 'Are you tanking?' for better clarity. |
+| 2.3.1 | Added 'Maintain Utility' toggle (now 'Are you tanking?'). Allows keeping Wisdom/Light active for procs instead of auto-swapping to SoR. |
 | 2.1.0 | Added 'Auto Stun: Heals Only' toggle. Addon now distinguishes between healing spells and generic casts for Hammer of Justice. |
 | 2.0.2 | Optimized memory usage by reusing rotation tables. Cleaned up redundant slash command definitions. |
 | 2.0.1 | Finalized 2x2 configuration layout. Added 4th rotation slot. |

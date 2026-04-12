@@ -1561,25 +1561,25 @@ local function PCA_BuildMenu()
     SetTip(debugBtn, "Prints detailed combat logs to your chat window (Very spammy!).")
     ySet = ySet - 30
 
-    local function PCA_GetMaintainUtilityText()
-        return PCA_Config.MaintainUtilitySeals and "Maintain Utility: YES" or "Maintain Utility: NO"
+    local function PCA_GetTankingText()
+        return PCA_Config.MaintainUtilitySeals and "Are you tanking: YES" or "Are you tanking: NO"
     end
 
     local maintainBtn = CreateFrame("Button", nil, PCA_Refs.pageSettings, "UIPanelButtonTemplate")
     maintainBtn:SetWidth(210)
     maintainBtn:SetHeight(22)
     maintainBtn:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", 0, ySet)
-    maintainBtn:SetText(PCA_GetMaintainUtilityText())
+    maintainBtn:SetText(PCA_GetTankingText())
     maintainBtn:SetScript("OnClick", function()
         PCA_Config.MaintainUtilitySeals = not PCA_Config.MaintainUtilitySeals
-        this:SetText(PCA_GetMaintainUtilityText())
-        dbg("|cff00ccff[PCA] Maintain Utility Seals: " .. (PCA_Config.MaintainUtilitySeals and "ON" or "OFF") .. "|r")
+        this:SetText(PCA_GetTankingText())
+        dbg("|cff00ccff[PCA] Tanking Mode: " .. (PCA_Config.MaintainUtilitySeals and "ON" or "OFF") .. "|r")
     end)
     maintainBtn:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Maintain Utility Seals")
+        GameTooltip:SetText("Tanking / Utility Mode")
         GameTooltip:AddLine("YES: Keeps your active seal (Wisdom/Light) for procs.", 1, 1, 1)
-        GameTooltip:AddLine("NO: Swaps to Righteousness after judging (DPS mode).", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine("Recommended for tanks to maintain mana/health.", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
     maintainBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
