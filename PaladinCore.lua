@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "2.0.1"
+local PCA_VERSION = "2.0.2"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -375,7 +375,7 @@ local function PCA_GetNextSpellCooldownInfo()
     for _, spell in ipairs(rotSpells) do
         if spell then
             if IsSeal(spell) then
-                if not PlayerHasSeal(spell) then return 0, 0 end  -- applying seal
+                if not PlayerHasSeal(spell) then return spellCD(spell) end  -- applying seal
 
                 -- If Judging is LIMITED, the next critical action might be Judgement (to apply debuff)
                 if PCA_Config.JudgingEnabled == false and spell ~= "Seal of Righteousness" and spell ~= "Seal of Command" then
@@ -555,12 +555,12 @@ local function PCA_GetNextActionInfo()
             local prebuff = PCA_Config.OpenerPrebuff or defaultOpenerPrebuff
             if prebuff ~= "None" and not PlayerHasSeal(prebuff) then
                 -- Seal application has no cooldown gate — always ready
-                return spellTextures[prebuff] or fallbackTex, true
+                return spellTextures[prebuff] or fallbackTex, IsSpellReady(prebuff)
             end
             return PCA_GetSpellIconShortName(castSpell) or fallbackTex, IsSpellReady(castSpell)
         else
             if not PlayerHasSeal(openerSpell) then
-                return spellTextures[openerSpell] or fallbackTex, true
+                return spellTextures[openerSpell] or fallbackTex, IsSpellReady(openerSpell)
             end
         end
         return fallbackTex, false
@@ -576,7 +576,7 @@ local function PCA_GetNextActionInfo()
             if IsSeal(spell) then
                 if not PlayerHasSeal(spell) then
                     -- Missing seal — applying it is the next action
-                    return spellTextures[spell] or fallbackTex, true
+                    return spellTextures[spell] or fallbackTex, IsSpellReady(spell)
                 end
 
                 -- If Judging is LIMITED, we allow ONE judgement to apply the utility debuff
