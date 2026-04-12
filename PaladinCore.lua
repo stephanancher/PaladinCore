@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "2.0.0"
+local PCA_VERSION = "2.0.1"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -75,67 +75,67 @@ local sealNames = {
 
 -- Opener dropdown options
 local openerOptions = {
-    "Holy Strike",
-    "Crusader Strike",
-    COMBO_HS_CS,
-    "Seal of Righteousness",
-    "Seal of Command",
-    "Seal of the Crusader",
-    "Seal of Wisdom",
-    "Seal of Light",
-    "Seal of Justice",
     "Blessing of Sanctuary",
+    "Crusader Strike",
     "Holy Shield",
+    "Holy Strike",
+    COMBO_HS_CS,
+    "Seal of Command",
+    "Seal of Justice",
+    "Seal of Light",
+    "Seal of Righteousness",
+    "Seal of Wisdom",
+    "Seal of the Crusader",
 }
 
 -- Pre-buff seal options (shown under opener; used when running in)
 local openerPrebuffOptions = {
     "None",
-    "Seal of Righteousness",
     "Seal of Command",
-    "Seal of the Crusader",
-    "Seal of Wisdom",
-    "Seal of Light",
     "Seal of Justice",
+    "Seal of Light",
+    "Seal of Righteousness",
+    "Seal of Wisdom",
+    "Seal of the Crusader",
 }
 
 -- Rotation slot dropdown options (None = skip this slot)
 local rotationOptions = {
     "None",
-    "Seal of Righteousness",
-    "Seal of Command",
-    "Seal of the Crusader",
-    "Seal of Wisdom",
-    "Seal of Light",
-    "Seal of Justice",
-    "Holy Strike",
-    "Crusader Strike",
-    COMBO_HS_CS,
-    "Consecration",
     "Blessing of Sanctuary",
+    "Consecration",
+    "Crusader Strike",
     "Holy Shield",
+    "Holy Strike",
+    COMBO_HS_CS,
+    "Seal of Command",
+    "Seal of Justice",
+    "Seal of Light",
+    "Seal of Righteousness",
+    "Seal of Wisdom",
+    "Seal of the Crusader",
 }
 
 -- Aura dropdown options
 local auraOptions = {
     "None",
+    "Concentration Aura",
     "Devotion Aura",
     "Retribution Aura",
-    "Concentration Aura",
     "Shadow Resistance Aura",
 }
 
 -- Blessing dropdown options
 local blessingOptions = {
     "None",
-    "Blessing of Kings",
-    "Blessing of Sanctuary",
-    "Blessing of Salvation",
-    "Blessing of Wisdom",
-    "Blessing of Might",
-    "Blessing of Light",
     "Blessing of Freedom",
+    "Blessing of Kings",
+    "Blessing of Light",
+    "Blessing of Might",
     "Blessing of Protection",
+    "Blessing of Salvation",
+    "Blessing of Sanctuary",
+    "Blessing of Wisdom",
 }
 
 -- ── Helpers ───────────────────────────────────────────────────────────────────
