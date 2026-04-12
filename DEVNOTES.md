@@ -1,6 +1,6 @@
 # PaladinCore Addon — Developer Notes
 
-## Current Version: `1.2.1`
+## Current Version: `2.1.0`
 
 > **Rule: bump the version on every meaningful change.**
 > Update `local PCA_VERSION` in `PaladinCore.lua` AND `## Version:` in `PaladinCore.toc`.
@@ -9,7 +9,10 @@
 > - **MINOR** — new spells, new options, new UI controls
 > - **MAJOR** — full rotation redesign or breaking config changes
 
-### Changelog
+| 2.1.0 | Added 'Auto Stun: Heals Only' toggle. Addon now distinguishes between healing spells and generic casts for Hammer of Justice. |
+| 2.0.2 | Optimized memory usage by reusing rotation tables. Cleaned up redundant slash command definitions. |
+| 2.0.1 | Finalized 2x2 configuration layout. Added 4th rotation slot. |
+| 2.0.0 | Tabbed UI refactor (Rotation, Config, Info). Added Info tab with repository link and dedication. | 
 | 1.8.5 | Re-enabled auto-targeting out of combat for better usability. |
 | 1.8.4 | Throttled version sync to only fire when group size actually changes (prevents combat spam). |
 | 1.8.3 | Fixed slash command parsing (case-insensitive and better argument handling). |
@@ -129,7 +132,8 @@ PaladinCore.xml
 | `OpenerPrebuff` | string | `"Seal of Righteousness"` | Seal applied while running in (when opener = attack spell) |
 | `RotationSpell1` | string | `"Seal of Righteousness"` | Slot 1 — highest priority rotation spell |
 | `RotationSpell2` | string | `"None"` | Slot 2 — second priority rotation spell |
-| `RotationSpell3` | string | `"None"` | Slot 3 — lowest priority rotation spell |
+| `RotationSpell3` | string | `"None"` | Slot 3 — third priority rotation spell |
+| `RotationSpell4` | string | `"None"` | Slot 4 — lowest priority rotation spell |
 | `HSCSToggle` | string | `"Holy Strike"` | Tracks which spell fires next in the HS/CS alternating combo |
 | `FightingUndead` | bool | `false` | When ON, casts Exorcism on undead targets after the pre-buff seal is applied |
 | `Debug` | bool | `false` | Whether debug messages print to chat |
@@ -153,7 +157,7 @@ It evaluates state on *every press* and performs exactly **one action**.
 ### In Combat — Single Priority Loop
 
 1. If **Fighting Undead** is ON and target is Undead/Demon and Exorcism is ready → cast Exorcism (Absolute Priority).
-2. Slots are evaluated in strict order (1 → 2 → 3) with no pre-sealing phase:
+2. Slots are evaluated in strict order (1 → 2 → 3 → 4) with no pre-sealing phase:
 
 - **Seal slot**: if the seal is missing → apply it and stop. If active → skip to next slot.
 - **Attack slot**: if the spell is ready → cast it and stop. If on cooldown → skip to next slot.

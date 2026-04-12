@@ -128,9 +128,6 @@
                 this:RegisterForDrag("LeftButton")
                 PCA_OnLoad()
             </OnLoad>
-            <OnEvent>
-                PCA_OnEvent()
-            </OnEvent>
             <OnDragStart>
                 this:StartMoving()
             </OnDragStart>

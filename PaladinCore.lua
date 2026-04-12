@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "2.0.2"
+local PCA_VERSION = "2.1.0"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -20,6 +20,7 @@ local cdScanTimer      = 0      -- counts up; re-scans for the macro action butt
 local autoAttackTick   = 0      -- counts icon ticks; fires auto-attack check every ~1 s
 local pca_autoAttacking = false  -- true once we have called AttackTarget(); reset by events
 local lastPartyCount   = 0      -- track group size to prevent sync spam
+local rotList          = {}     -- persistent table to avoid GC pressure
 
 local pcaMessages = {
     "I am powered by the mighty PaladinCore!",
@@ -61,6 +62,14 @@ local spellTextures = {
     ["Blessing of Freedom"]          = "Spell_Holy_SealOfValor",
     ["Blessing of Protection"]       = "Spell_Holy_SealOfProtection",
     ["Holy Shield"]                  = "Ability_Paladin_HolyShield",
+}
+
+local healingSpellPatterns = {
+    "heal", " Lesser Heal", " Greater Heal", " Flash Heal",
+    "holy light", "flash of light",
+    "healing wave", "lesser healing wave", "chain heal",
+    "healing touch", "regrowth", "rejuvenation",
+    "tranquility", "prayer of healing",
 }
 
 -- Fast lookup: is this spell a seal?
@@ -281,7 +290,18 @@ local function UnitIsCasting(unit)
     if name == PCA_State.castingTargetName then
         local elapsed = GetTime() - (PCA_State.castStartTime or 0)
         -- Standard cast window; reset if too much time has passed
-        if elapsed < 3.5 then return true else PCA_State.castingTargetName = nil end
+        if elapsed < 3.5 then
+            if PCA_Config.AutoStunHealsOnly then
+                local s = string.lower(PCA_State.castingSpellName or "")
+                for _, pattern in ipairs(healingSpellPatterns) do
+                    if string.find(s, pattern) then return true end
+                end
+                return false -- casting something else, but we only want heals
+            end
+            return true 
+        else 
+            PCA_State.castingTargetName = nil 
+        end
     end
     return false
 end
@@ -319,14 +339,13 @@ local function GetEffectiveSpell(spellName)
     return spellName
 end
 
--- Build the effective priority list from the 3 config slots.
+-- Build the effective priority list from the config slots.
 local function GetRotationSpells()
-    return {
-        GetEffectiveSpell(PCA_Config.RotationSpell1 or defaultRot1),
-        GetEffectiveSpell(PCA_Config.RotationSpell2 or defaultRot2),
-        GetEffectiveSpell(PCA_Config.RotationSpell3 or defaultRot3),
-        GetEffectiveSpell(PCA_Config.RotationSpell4 or defaultRot4),
-    }
+    rotList[1] = GetEffectiveSpell(PCA_Config.RotationSpell1 or defaultRot1)
+    rotList[2] = GetEffectiveSpell(PCA_Config.RotationSpell2 or defaultRot2)
+    rotList[3] = GetEffectiveSpell(PCA_Config.RotationSpell3 or defaultRot3)
+    rotList[4] = GetEffectiveSpell(PCA_Config.RotationSpell4 or defaultRot4)
+    return rotList
 end
 
 -- Returns (start, duration) from GetSpellCooldown for the *next* spell in the
@@ -677,8 +696,8 @@ function PCA_OnLoad()
     if PCA_Config.AssistTankName == nil then PCA_Config.AssistTankName = ""    end
     if PCA_Config.MinimapPos     == nil then PCA_Config.MinimapPos     = 45   end
     if PCA_Config.SmartTargeting == nil then PCA_Config.SmartTargeting = true end
-    if PCA_Config.SmartTargeting == nil then PCA_Config.SmartTargeting = true end
     if PCA_Config.AutoStun      == nil then PCA_Config.AutoStun      = false end
+    if PCA_Config.AutoStunHealsOnly == nil then PCA_Config.AutoStunHealsOnly = false end
     if PCA_Config.UIScale        == nil then PCA_Config.UIScale        = 0.85 end
 
     -- Set title to full name + version
@@ -689,29 +708,6 @@ function PCA_OnLoad()
     if PCASubTitle then
         PCASubTitle:SetFont("Fonts\\FRIZQT__.TTF", 12)
         PCASubTitle:SetText("")
-    end
-
-    SLASH_PCA1 = "/pca"
-    SlashCmdList["PCA"] = PCA_OpenMenu
-
-    SLASH_PCABUFFS1 = "/pcabuffs"
-    SlashCmdList["PCABUFFS"] = function()
-        DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00PaladinCore — Player buffs:|r")
-        local i = 1
-        while true do
-            local texture = UnitBuff("player", i)
-            if not texture then break end
-            DEFAULT_CHAT_FRAME:AddMessage("  [" .. i .. "] " .. texture)
-            i = i + 1
-        end
-        DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00PaladinCore — Target debuffs:|r")
-        i = 1
-        while true do
-            local texture = UnitDebuff("target", i)
-            if not texture then break end
-            DEFAULT_CHAT_FRAME:AddMessage("  [" .. i .. "] " .. texture)
-            i = i + 1
-        end
     end
 
     tinsert(UISpecialFrames, "PCAFrame")
@@ -786,6 +782,7 @@ function PCA_OnLoad()
                 local _, _, caster, spell = string.find(arg1, "(.+) begins to cast (.+)%.")
                 if caster and caster == UnitName("target") then
                     PCA_State.castingTargetName = caster
+                    PCA_State.castingSpellName = spell
                     PCA_State.castStartTime = GetTime()
                     dbg("|cffff0000[PCA] Target is casting: " .. spell .. "|r")
                 end
@@ -1133,6 +1130,11 @@ end
 local function PCA_GetAutoStunText()
     if PCA_Config.AutoStun then return "Auto Stun: ON"
     else return "Auto Stun: OFF" end
+end
+
+local function PCA_GetAutoStunHealsOnlyText()
+    if PCA_Config.AutoStunHealsOnly then return "Stun: Heals Only: YES"
+    else return "Stun: Heals Only: NO" end
 end
 
 local function PCA_GetAssistText()
@@ -1520,6 +1522,19 @@ local function PCA_BuildMenu()
     SetTip(autoStunBtn, "Automatically uses Hammer of Justice if the target begins casting within range.")
     ySet = ySet - 26
 
+    local autoStunHealsBtn = CreateFrame("Button", "PCAAutoStunHealsBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
+    autoStunHealsBtn:SetWidth(210)
+    autoStunHealsBtn:SetHeight(22)
+    autoStunHealsBtn:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", 0, ySet)
+    autoStunHealsBtn:SetText(PCA_GetAutoStunHealsOnlyText())
+    autoStunHealsBtn:SetScript("OnClick", function()
+        PCA_Config.AutoStunHealsOnly = not PCA_Config.AutoStunHealsOnly
+        autoStunHealsBtn:SetText(PCA_GetAutoStunHealsOnlyText())
+    end)
+    PCA_Refs.autoStunHealsBtnRef = autoStunHealsBtn
+    SetTip(autoStunHealsBtn, "When ON, Auto Stun will only trigger if the target is casting a healing spell.")
+    ySet = ySet - 26
+
     local debugBtn = CreateFrame("Button", "PCADebugBtn", PCA_Refs.pageSettings, "UIPanelButtonTemplate")
     debugBtn:SetWidth(210)
     debugBtn:SetHeight(22)
@@ -1709,6 +1724,7 @@ function PCA_OpenMenu()
     if PCA_Refs.fightingUndeadBtnRef then PCA_Refs.fightingUndeadBtnRef:SetText(PCA_GetFightingUndeadText()) end
     if PCA_Refs.smartTargetingBtnRef then PCA_Refs.smartTargetingBtnRef:SetText(PCA_GetSmartTargetingText()) end
     if PCA_Refs.autoStunBtnRef then PCA_Refs.autoStunBtnRef:SetText(PCA_GetAutoStunText()) end
+    if PCA_Refs.autoStunHealsBtnRef then PCA_Refs.autoStunHealsBtnRef:SetText(PCA_GetAutoStunHealsOnlyText()) end
     if PCA_Refs.judgingBtnRef then PCA_Refs.judgingBtnRef:SetText(PCA_GetJudgingText()) end
     if PCA_Refs.assistBtnRef then PCA_Refs.assistBtnRef:SetText(PCA_GetAssistText()) end
     if PCA_Refs.rfBtnRef then PCA_Refs.rfBtnRef:SetText(PCA_GetRFText()) end
