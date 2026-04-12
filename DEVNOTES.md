@@ -1,6 +1,6 @@
 # PaladinCore Addon — Developer Notes
 
-## Current Version: `2.3.5`
+## Current Version: `2.3.6`
 
 > **Rule: bump the version on every meaningful change.**
 > Update `local PCA_VERSION` in `PaladinCore.lua` AND `## Version:` in `PaladinCore.toc`.
@@ -30,6 +30,7 @@
 ---
 
 ### Changelog
+| 2.3.6 | Enabled manual buffing via the 'Pre-buff (out of range)' setting even when no target is currently selected. |
 | 2.3.5 | Updated Holy Shield texture to 'Spell_holy_BlessingofProtection' for improved Turtle WoW compatibility. |
 | 2.3.4 | Restricted Rotation Slot 1 to Seals only and renamed to '1. (Seals)' for better rotation guidance. |
 | 2.3.3 | Fixed 'Are you tanking?' (Maintain Utility) logic in the out-of-combat opener/pre-buff code path. |

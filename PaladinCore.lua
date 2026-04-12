@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "2.3.5"
+local PCA_VERSION = "2.3.6"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -986,12 +986,18 @@ function paladincore()
             -- No target found (or out of combat) — apply pre-buff if configured
             local inCombat = UnitAffectingCombat("player")
             if not inCombat then
-                if IsSeal(openerSpell) then
-                    -- Opener is a seal — apply it
-                    if not PlayerHasSeal(openerSpell) then
-                        dbg("|cff00ff00[PCA] No Target: Applying opener " .. openerSpell .. "|r")
-                        CastSpellByName(openerSpell)
-                    end
+                -- Apply our configured Pre-buff even without a target
+                local prebuff = GetEffectiveSpell(PCA_Config.OpenerPrebuff or defaultOpenerPrebuff)
+                if prebuff and prebuff ~= "None" and not PlayerHasSeal(prebuff) then
+                    dbg("|cff00ff00[PCA] No Target: Applying pre-buff " .. prebuff .. "|r")
+                    CastSpellByName(prebuff)
+                    return
+                end
+
+                -- If no pre-buff needed, still check if the opener itself is a seal
+                if IsSeal(openerSpell) and not PlayerHasSeal(openerSpell) then
+                    dbg("|cff00ff00[PCA] No Target: Applying opener seal " .. openerSpell .. "|r")
+                    CastSpellByName(openerSpell)
                 end
             else
                 -- In combat with no target (and TargetNearestEnemy failed) — maintain first rotation seal
