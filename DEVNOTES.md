@@ -1,6 +1,6 @@
 # PaladinCore Addon — Developer Notes
 
-## Current Version: `2.1.0`
+## Current Version: `2.3.2`
 
 > **Rule: bump the version on every meaningful change.**
 > Update `local PCA_VERSION` in `PaladinCore.lua` AND `## Version:` in `PaladinCore.toc`.
@@ -9,6 +9,29 @@
 > - **MINOR** — new spells, new options, new UI controls
 > - **MAJOR** — full rotation redesign or breaking config changes
 
+---
+
+# 📜 CRITICAL: Addon Stability Rules
+
+> **MANDATORY**: Follow these rules before ANY code change.
+
+1. **Variables Timing**: 1.12.1 does NOT load SavedVariables in `OnLoad`. 
+   - NEVER call UI builders that check `PCA_Config` in `OnLoad`.
+   - ALWAYS use the `VARIABLES_LOADED` event for initialization.
+2. **Rotation Integrity**: The 1→2→3→4 priority loop is sacred. 
+   - Any overrides (e.g. "Mana Mode") MUST preserve tactical slots (Consecration/Holy Shield).
+   - Never implement overrides that replace the full rotation unless user explicitly asks for "Emergency Mode".
+3. **Syntax Safety**: When removing UI buttons or frames code blocks:
+   - Double-check for stray `end` statements or duplicate `return` lines.
+   - Removing a frame block in Lua often leaves an empty `end` that breaks the file.
+4. **Texture Constraints**: Use the local `spellTextures` table for icon mapping.
+   - Do NOT assume external textures are available without confirming via `/pcabuffs`.
+
+---
+
+### Changelog
+| 2.3.2 | Cleanup: Removed legacy 'Mana Mode' comments and fixed duplicate UI script assignments. |
+| 2.3.1 | Added 'Maintain Utility' toggle. Allows keeping Wisdom/Light active for procs instead of auto-swapping to SoR. |
 | 2.1.0 | Added 'Auto Stun: Heals Only' toggle. Addon now distinguishes between healing spells and generic casts for Hammer of Justice. |
 | 2.0.2 | Optimized memory usage by reusing rotation tables. Cleaned up redundant slash command definitions. |
 | 2.0.1 | Finalized 2x2 configuration layout. Added 4th rotation slot. |

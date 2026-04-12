@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "2.1.0"
+local PCA_VERSION = "2.3.2"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -327,6 +327,14 @@ local function GetEffectiveSpell(spellName)
     -- If Judging is DISABLED, we don't swap to SoR (we keep our utility seal up)
     if PCA_Config.JudgingEnabled == false then return spellName end
 
+    -- NEW: If MaintainUtilitySeals is ON, we don't swap Wisdom or Light.
+    if PCA_Config.MaintainUtilitySeals then
+        return spellName
+    end
+
+    -- Utility Seal Logic (Default/Old Behavior)
+    -- If we are using a utility seal AND the target already has the 
+    -- corresponding Judgement debuff, we swap to our "damage" seal (SoR).
     if IsSeal(spellName)
        and spellName ~= "Seal of Righteousness"
        and spellName ~= "Seal of Command"
@@ -341,10 +349,15 @@ end
 
 -- Build the effective priority list from the config slots.
 local function GetRotationSpells()
-    rotList[1] = GetEffectiveSpell(PCA_Config.RotationSpell1 or defaultRot1)
-    rotList[2] = GetEffectiveSpell(PCA_Config.RotationSpell2 or defaultRot2)
-    rotList[3] = GetEffectiveSpell(PCA_Config.RotationSpell3 or defaultRot3)
-    rotList[4] = GetEffectiveSpell(PCA_Config.RotationSpell4 or defaultRot4)
+    local s1 = PCA_Config.RotationSpell1 or defaultRot1
+    local s2 = PCA_Config.RotationSpell2 or defaultRot2
+    local s3 = PCA_Config.RotationSpell3 or defaultRot3
+    local s4 = PCA_Config.RotationSpell4 or defaultRot4
+    
+    rotList[1] = GetEffectiveSpell(s1)
+    rotList[2] = GetEffectiveSpell(s2)
+    rotList[3] = GetEffectiveSpell(s3)
+    rotList[4] = GetEffectiveSpell(s4)
     return rotList
 end
 
@@ -571,7 +584,7 @@ local function PCA_GetNextActionInfo()
             if UnitExists("target") and IsSpellReady(castSpell) then
                 return PCA_GetSpellIconShortName(castSpell) or fallbackTex, true
             end
-            local prebuff = PCA_Config.OpenerPrebuff or defaultOpenerPrebuff
+            local prebuff = GetEffectiveSpell(PCA_Config.OpenerPrebuff or defaultOpenerPrebuff)
             if prebuff ~= "None" and not PlayerHasSeal(prebuff) then
                 -- Seal application has no cooldown gate — always ready
                 return spellTextures[prebuff] or fallbackTex, IsSpellReady(prebuff)
@@ -698,6 +711,7 @@ function PCA_OnLoad()
     if PCA_Config.SmartTargeting == nil then PCA_Config.SmartTargeting = true end
     if PCA_Config.AutoStun      == nil then PCA_Config.AutoStun      = false end
     if PCA_Config.AutoStunHealsOnly == nil then PCA_Config.AutoStunHealsOnly = false end
+    if PCA_Config.MaintainUtilitySeals == nil then PCA_Config.MaintainUtilitySeals = false end
     if PCA_Config.UIScale        == nil then PCA_Config.UIScale        = 0.85 end
 
     -- Set title to full name + version
@@ -782,7 +796,6 @@ function PCA_OnLoad()
                 local _, _, caster, spell = string.find(arg1, "(.+) begins to cast (.+)%.")
                 if caster and caster == UnitName("target") then
                     PCA_State.castingTargetName = caster
-                    PCA_State.castingSpellName = spell
                     PCA_State.castStartTime = GetTime()
                     dbg("|cffff0000[PCA] Target is casting: " .. spell .. "|r")
                 end
@@ -951,7 +964,7 @@ function paladincore()
     if PCA_EnsureRF()        then return end
     if PCA_EnsureBlessing()  then return end
     if PCA_EnsureAura()      then return end
-
+    
     local openerSpell = PCA_Config.OpenerSpell or defaultOpener
 
     ----------------------------------------------------------------
@@ -1546,7 +1559,31 @@ local function PCA_BuildMenu()
     end)
     PCA_Refs.debugBtnRef = debugBtn
     SetTip(debugBtn, "Prints detailed combat logs to your chat window (Very spammy!).")
-    ySet = ySet - 40
+    ySet = ySet - 30
+
+    local function PCA_GetMaintainUtilityText()
+        return PCA_Config.MaintainUtilitySeals and "Maintain Utility: YES" or "Maintain Utility: NO"
+    end
+
+    local maintainBtn = CreateFrame("Button", nil, PCA_Refs.pageSettings, "UIPanelButtonTemplate")
+    maintainBtn:SetWidth(210)
+    maintainBtn:SetHeight(22)
+    maintainBtn:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", 0, ySet)
+    maintainBtn:SetText(PCA_GetMaintainUtilityText())
+    maintainBtn:SetScript("OnClick", function()
+        PCA_Config.MaintainUtilitySeals = not PCA_Config.MaintainUtilitySeals
+        this:SetText(PCA_GetMaintainUtilityText())
+        dbg("|cff00ccff[PCA] Maintain Utility Seals: " .. (PCA_Config.MaintainUtilitySeals and "ON" or "OFF") .. "|r")
+    end)
+    maintainBtn:SetScript("OnEnter", function()
+        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Maintain Utility Seals")
+        GameTooltip:AddLine("YES: Keeps your active seal (Wisdom/Light) for procs.", 1, 1, 1)
+        GameTooltip:AddLine("NO: Swaps to Righteousness after judging (DPS mode).", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    maintainBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    ySet = ySet - 30
 
     local scaleLbl = PCA_Refs.pageSettings:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     scaleLbl:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", -28, ySet)
@@ -1652,6 +1689,7 @@ local function PCA_BuildMenu()
     dragTex:SetPoint("BOTTOMRIGHT", dragBtn, "BOTTOMRIGHT", -3,  3)
     PCA_Refs.dragBtnTex = dragTex
 
+    -- ── Draggable PalCore Macro ──────────────────────────────────────────────
     local dragHint = PCA_Refs.pageInfo:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     dragHint:SetPoint("LEFT", dragBtn, "RIGHT", 6, 0)
     dragHint:SetJustifyH("LEFT")
