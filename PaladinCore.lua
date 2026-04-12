@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "1.8.10"
+local PCA_VERSION = "1.9.0"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -11,6 +11,7 @@ local defaultOpenerPrebuff = "Seal of Righteousness"
 local defaultRot1          = "Seal of Righteousness"
 local defaultRot2          = "None"
 local defaultRot3          = "None"
+local defaultRot4          = "None"
 
 local COMBO_HS_CS = "Holy Strike / Crusader Strike"
 
@@ -59,6 +60,7 @@ local spellTextures = {
     ["Blessing of Light"]            = "Spell_Holy_PrayerOfHealing02",
     ["Blessing of Freedom"]          = "Spell_Holy_SealOfValor",
     ["Blessing of Protection"]       = "Spell_Holy_SealOfProtection",
+    ["Holy Shield"]                  = "Ability_Paladin_HolyShield",
 }
 
 -- Fast lookup: is this spell a seal?
@@ -83,6 +85,7 @@ local openerOptions = {
     "Seal of Light",
     "Seal of Justice",
     "Blessing of Sanctuary",
+    "Holy Shield",
 }
 
 -- Pre-buff seal options (shown under opener; used when running in)
@@ -110,6 +113,7 @@ local rotationOptions = {
     COMBO_HS_CS,
     "Consecration",
     "Blessing of Sanctuary",
+    "Holy Shield",
 }
 
 -- Aura dropdown options
@@ -321,6 +325,7 @@ local function GetRotationSpells()
         GetEffectiveSpell(PCA_Config.RotationSpell1 or defaultRot1),
         GetEffectiveSpell(PCA_Config.RotationSpell2 or defaultRot2),
         GetEffectiveSpell(PCA_Config.RotationSpell3 or defaultRot3),
+        GetEffectiveSpell(PCA_Config.RotationSpell4 or defaultRot4),
     }
 end
 
@@ -648,6 +653,7 @@ function PCA_OnLoad()
     if not PCA_Config.RotationSpell1 then PCA_Config.RotationSpell1 = defaultRot1          end
     if not PCA_Config.RotationSpell2 then PCA_Config.RotationSpell2 = defaultRot2          end
     if not PCA_Config.RotationSpell3 then PCA_Config.RotationSpell3 = defaultRot3          end
+    if not PCA_Config.RotationSpell4 then PCA_Config.RotationSpell4 = defaultRot4          end
     if not PCA_Config.SelectedAura   then PCA_Config.SelectedAura   = "None"               end
     if not PCA_Config.SelectedBlessing then PCA_Config.SelectedBlessing = "None"            end
     if PCA_Config.MaintainRF     == nil then PCA_Config.MaintainRF     = false             end
@@ -1139,16 +1145,18 @@ end
 local function PCA_OpenerDropdown_Init()
     local current = PCA_Config.OpenerSpell or defaultOpener
     for _, spell in ipairs(openerOptions) do
-        local capture = spell
-        local info = {}
-        info.text    = spell
-        info.checked = (spell == current)
-        info.func    = function()
-            PCA_Config.OpenerSpell = capture
-            UIDropDownMenu_SetText(capture, PCAOpenerDropdown)
-            CloseDropDownMenus()
+        if spell ~= "Holy Shield" or FindSpell("Holy Shield") then
+            local capture = spell
+            local info = {}
+            info.text    = spell
+            info.checked = (spell == current)
+            info.func    = function()
+                PCA_Config.OpenerSpell = capture
+                UIDropDownMenu_SetText(capture, PCAOpenerDropdown)
+                CloseDropDownMenus()
+            end
+            UIDropDownMenu_AddButton(info)
         end
-        UIDropDownMenu_AddButton(info)
     end
 end
 
@@ -1171,48 +1179,72 @@ end
 local function PCA_RotationDropdown1_Init()
     local current = PCA_Config.RotationSpell1 or defaultRot1
     for _, spell in ipairs(rotationOptions) do
-        local capture = spell
-        local info = {}
-        info.text    = spell
-        info.checked = (spell == current)
-        info.func    = function()
-            PCA_Config.RotationSpell1 = capture
-            UIDropDownMenu_SetText(capture, PCARotationDropdown1)
-            CloseDropDownMenus()
+        if spell ~= "Holy Shield" or FindSpell("Holy Shield") then
+            local capture = spell
+            local info = {}
+            info.text    = spell
+            info.checked = (spell == current)
+            info.func    = function()
+                PCA_Config.RotationSpell1 = capture
+                UIDropDownMenu_SetText(capture, PCARotationDropdown1)
+                CloseDropDownMenus()
+            end
+            UIDropDownMenu_AddButton(info)
         end
-        UIDropDownMenu_AddButton(info)
     end
 end
 
 local function PCA_RotationDropdown2_Init()
     local current = PCA_Config.RotationSpell2 or defaultRot2
     for _, spell in ipairs(rotationOptions) do
-        local capture = spell
-        local info = {}
-        info.text    = spell
-        info.checked = (spell == current)
-        info.func    = function()
-            PCA_Config.RotationSpell2 = capture
-            UIDropDownMenu_SetText(capture, PCARotationDropdown2)
-            CloseDropDownMenus()
+        if spell ~= "Holy Shield" or FindSpell("Holy Shield") then
+            local capture = spell
+            local info = {}
+            info.text    = spell
+            info.checked = (spell == current)
+            info.func    = function()
+                PCA_Config.RotationSpell2 = capture
+                UIDropDownMenu_SetText(capture, PCARotationDropdown2)
+                CloseDropDownMenus()
+            end
+            UIDropDownMenu_AddButton(info)
         end
-        UIDropDownMenu_AddButton(info)
     end
 end
 
 local function PCA_RotationDropdown3_Init()
     local current = PCA_Config.RotationSpell3 or defaultRot3
     for _, spell in ipairs(rotationOptions) do
-        local capture = spell
-        local info = {}
-        info.text    = spell
-        info.checked = (spell == current)
-        info.func    = function()
-            PCA_Config.RotationSpell3 = capture
-            UIDropDownMenu_SetText(capture, PCARotationDropdown3)
-            CloseDropDownMenus()
+        if spell ~= "Holy Shield" or FindSpell("Holy Shield") then
+            local capture = spell
+            local info = {}
+            info.text    = spell
+            info.checked = (spell == current)
+            info.func    = function()
+                PCA_Config.RotationSpell3 = capture
+                UIDropDownMenu_SetText(capture, PCARotationDropdown3)
+                CloseDropDownMenus()
+            end
+            UIDropDownMenu_AddButton(info)
         end
-        UIDropDownMenu_AddButton(info)
+    end
+end
+
+local function PCA_RotationDropdown4_Init()
+    local current = PCA_Config.RotationSpell4 or defaultRot4
+    for _, spell in ipairs(rotationOptions) do
+        if spell ~= "Holy Shield" or FindSpell("Holy Shield") then
+            local capture = spell
+            local info = {}
+            info.text    = spell
+            info.checked = (spell == current)
+            info.func    = function()
+                PCA_Config.RotationSpell4 = capture
+                UIDropDownMenu_SetText(capture, PCARotationDropdown4)
+                CloseDropDownMenus()
+            end
+            UIDropDownMenu_AddButton(info)
+        end
     end
 end
 
@@ -1286,6 +1318,10 @@ end
 local function PCA_BuildMenu()
     local frame = PCAFrame
     
+    local closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+    closeBtn:SetScript("OnClick", function() frame:Hide() end)
+
     -- ── Tab Buttons ──────────────────────────────────────────────────────────
     local function MakeTab(text, id, x)
         local btn = CreateFrame("Button", nil, frame)
@@ -1328,26 +1364,26 @@ local function PCA_BuildMenu()
     contentArea:SetBackdropBorderColor(0.4, 0.4, 0.4, 1)
 
     -- ── Layout Helpers ──────────────────────────────────────────────────────
-    local function MakeLabel(p, text, yOff)
+    local function MakeLabel(p, text, yOff, xOff)
         local lbl = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        lbl:SetPoint("TOP", p, "TOP", 0, yOff)
+        lbl:SetPoint("TOP", p, "TOP", xOff or 0, yOff)
         lbl:SetText(text)
         lbl:SetTextColor(1, 0.9, 0)
         return lbl
     end
 
-    local function MakeLabelSmall(p, text, yOff)
+    local function MakeLabelSmall(p, text, yOff, xOff)
         local lbl = p:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        lbl:SetPoint("TOP", p, "TOP", 0, yOff)
+        lbl:SetPoint("TOP", p, "TOP", xOff or 0, yOff)
         lbl:SetText(text)
         lbl:SetTextColor(0.7, 0.7, 0.7)
         return lbl
     end
 
-    local function MakeDropdown(p, globalName, initFunc, configKey, defaultVal, yOff)
+    local function MakeDropdown(p, globalName, initFunc, configKey, defaultVal, yOff, xOff)
         local dd = CreateFrame("Frame", globalName, p, "UIDropDownMenuTemplate")
-        dd:SetPoint("TOP", p, "TOP", 0, yOff)
-        UIDropDownMenu_SetWidth(160, dd)
+        dd:SetPoint("TOP", p, "TOP", xOff or 0, yOff)
+        UIDropDownMenu_SetWidth(120, dd)
         UIDropDownMenu_Initialize(dd, initFunc)
         UIDropDownMenu_SetText(PCA_Config[configKey] or defaultVal, dd)
         return dd
@@ -1370,27 +1406,30 @@ local function PCA_BuildMenu()
     MakeLabel(PCA_Refs.pageRotation, "Opener Spell", yRot)
     yRot = yRot - 18
     MakeDropdown(PCA_Refs.pageRotation, "PCAOpenerDropdown", PCA_OpenerDropdown_Init, "OpenerSpell", defaultOpener, yRot)
-    yRot = yRot - 40
+    yRot = yRot - 38
 
     MakeLabelSmall(PCA_Refs.pageRotation, "  └ Pre-buff (out of range)", yRot)
-    yRot = yRot - 18
+    yRot = yRot - 16
     MakeDropdown(PCA_Refs.pageRotation, "PCAOpenerPrebuffDropdown", PCA_OpenerPrebuffDropdown_Init, "OpenerPrebuff", defaultOpenerPrebuff, yRot)
-    yRot = yRot - 40
+    yRot = yRot - 45
 
-    MakeLabel(PCA_Refs.pageRotation, "1. Rotation Spell", yRot)
-    yRot = yRot - 18
-    MakeDropdown(PCA_Refs.pageRotation, "PCARotationDropdown1", PCA_RotationDropdown1_Init, "RotationSpell1", defaultRot1, yRot)
-    yRot = yRot - 40
+    -- Row 1: Slots 1 & 2
+    MakeLabel(PCA_Refs.pageRotation, "1.", yRot, -75)
+    local drop1 = MakeDropdown(PCA_Refs.pageRotation, "PCARotationDropdown1", PCA_RotationDropdown1_Init, "RotationSpell1", defaultRot1, yRot - 16, -75)
+    
+    MakeLabel(PCA_Refs.pageRotation, "2.", yRot, 75)
+    local drop2 = MakeDropdown(PCA_Refs.pageRotation, "PCARotationDropdown2", PCA_RotationDropdown2_Init, "RotationSpell2", defaultRot2, yRot - 16, 75)
+    
+    yRot = yRot - 65
 
-    MakeLabel(PCA_Refs.pageRotation, "2. Rotation Spell", yRot)
-    yRot = yRot - 18
-    MakeDropdown(PCA_Refs.pageRotation, "PCARotationDropdown2", PCA_RotationDropdown2_Init, "RotationSpell2", defaultRot2, yRot)
-    yRot = yRot - 40
-
-    MakeLabel(PCA_Refs.pageRotation, "3. Rotation Spell", yRot)
-    yRot = yRot - 18
-    MakeDropdown(PCA_Refs.pageRotation, "PCARotationDropdown3", PCA_RotationDropdown3_Init, "RotationSpell3", defaultRot3, yRot)
-    yRot = yRot - 38
+    -- Row 2: Slots 3 & 4
+    MakeLabel(PCA_Refs.pageRotation, "3.", yRot, -75)
+    local drop3 = MakeDropdown(PCA_Refs.pageRotation, "PCARotationDropdown3", PCA_RotationDropdown3_Init, "RotationSpell3", defaultRot3, yRot - 16, -75)
+    
+    MakeLabel(PCA_Refs.pageRotation, "4.", yRot, 75)
+    local drop4 = MakeDropdown(PCA_Refs.pageRotation, "PCARotationDropdown4", PCA_RotationDropdown4_Init, "RotationSpell4", defaultRot4, yRot - 16, 75)
+    
+    yRot = yRot - 55
 
     local judgingBtn = CreateFrame("Button", "PCAJudgingBtn", PCA_Refs.pageRotation, "UIPanelButtonTemplate")
     judgingBtn:SetWidth(210)
@@ -1648,6 +1687,9 @@ function PCA_UpdateButtons()
     end
     if PCARotationDropdown3 then
         UIDropDownMenu_SetText(PCA_Config.RotationSpell3 or defaultRot3, PCARotationDropdown3)
+    end
+    if PCARotationDropdown4 then
+        UIDropDownMenu_SetText(PCA_Config.RotationSpell4 or defaultRot4, PCARotationDropdown4)
     end
     if PCA_AuraDropdown then
         UIDropDownMenu_SetText(PCA_Config.SelectedAura or "None", PCA_AuraDropdown)
