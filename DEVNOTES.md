@@ -1,6 +1,6 @@
 # PaladinCore Addon — Developer Notes
 
-## Current Version: `2.3.3`
+## Current Version: `2.3.4`
 
 > **Rule: bump the version on every meaningful change.**
 > Update `local PCA_VERSION` in `PaladinCore.lua` AND `## Version:` in `PaladinCore.toc`.
@@ -30,6 +30,7 @@
 ---
 
 ### Changelog
+| 2.3.4 | Restricted Rotation Slot 1 to Seals only and renamed to '1. (Seals)' for better rotation guidance. |
 | 2.3.3 | Fixed 'Are you tanking?' (Maintain Utility) logic in the out-of-combat opener/pre-buff code path. |
 | 2.3.2 | Cleanup: Removed legacy 'Mana Mode' comments, renamed 'Maintain Utility' toggle to 'Are you tanking?', and fixed Auto Stun detection bug. |
 | 2.3.1 | Added 'Maintain Utility' toggle (now 'Are you tanking?'). Allows keeping Wisdom/Light active for procs instead of auto-swapping to SoR. |

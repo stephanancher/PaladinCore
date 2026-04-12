@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "2.3.3"
+local PCA_VERSION = "2.3.4"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -99,6 +99,17 @@ local openerOptions = {
 
 -- Pre-buff seal options (shown under opener; used when running in)
 local openerPrebuffOptions = {
+    "None",
+    "Seal of Command",
+    "Seal of Justice",
+    "Seal of Light",
+    "Seal of Righteousness",
+    "Seal of Wisdom",
+    "Seal of the Crusader",
+}
+
+-- Rotation slot 1 dropdown options (Restriction: Seals only)
+local sealRotationOptions = {
     "None",
     "Seal of Command",
     "Seal of Justice",
@@ -1194,19 +1205,17 @@ end
 
 local function PCA_RotationDropdown1_Init()
     local current = PCA_Config.RotationSpell1 or defaultRot1
-    for _, spell in ipairs(rotationOptions) do
-        if spell ~= "Holy Shield" or FindSpell("Holy Shield") then
-            local capture = spell
-            local info = {}
-            info.text    = spell
-            info.checked = (spell == current)
-            info.func    = function()
-                PCA_Config.RotationSpell1 = capture
-                UIDropDownMenu_SetText(capture, PCARotationDropdown1)
-                CloseDropDownMenus()
-            end
-            UIDropDownMenu_AddButton(info)
+    for _, spell in ipairs(sealRotationOptions) do
+        local capture = spell
+        local info = {}
+        info.text    = spell
+        info.checked = (spell == current)
+        info.func    = function()
+            PCA_Config.RotationSpell1 = capture
+            UIDropDownMenu_SetText(capture, PCARotationDropdown1)
+            CloseDropDownMenus()
         end
+        UIDropDownMenu_AddButton(info)
     end
 end
 
@@ -1430,7 +1439,7 @@ local function PCA_BuildMenu()
     yRot = yRot - 45
 
     -- Row 1: Slots 1 & 2
-    MakeLabel(PCA_Refs.pageRotation, "1.", yRot, -75)
+    MakeLabel(PCA_Refs.pageRotation, "1. (Seals)", yRot, -75)
     local drop1 = MakeDropdown(PCA_Refs.pageRotation, "PCARotationDropdown1", PCA_RotationDropdown1_Init, "RotationSpell1", defaultRot1, yRot - 16, -75)
     
     MakeLabel(PCA_Refs.pageRotation, "2.", yRot, 75)
