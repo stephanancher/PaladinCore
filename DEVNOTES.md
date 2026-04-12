@@ -1,6 +1,6 @@
 # PaladinCore Addon — Developer Notes
 
-## Current Version: `2.3.4`
+## Current Version: `2.3.5`
 
 > **Rule: bump the version on every meaningful change.**
 > Update `local PCA_VERSION` in `PaladinCore.lua` AND `## Version:` in `PaladinCore.toc`.
@@ -30,6 +30,7 @@
 ---
 
 ### Changelog
+| 2.3.5 | Updated Holy Shield texture to 'Spell_holy_BlessingofProtection' for improved Turtle WoW compatibility. |
 | 2.3.4 | Restricted Rotation Slot 1 to Seals only and renamed to '1. (Seals)' for better rotation guidance. |
 | 2.3.3 | Fixed 'Are you tanking?' (Maintain Utility) logic in the out-of-combat opener/pre-buff code path. |
 | 2.3.2 | Cleanup: Removed legacy 'Mana Mode' comments, renamed 'Maintain Utility' toggle to 'Are you tanking?', and fixed Auto Stun detection bug. |
@@ -128,6 +129,7 @@ Verified with `/pcabuffs` in-game. **Do not change without re-confirming.**
 | Seal of Command | `Ability_Thunderbolt` *(unconfirmed — test with /pcabuffs)* |
 | Holy Strike | `Ability_Paladin_HolyStrike` |
 | Crusader Strike | `Spell_Holy_CrusaderStrike` |
+| Holy Shield | `Spell_holy_BlessingofProtection` |
 | Consecration | `Spell_Holy_Consecration` |
 
 ---

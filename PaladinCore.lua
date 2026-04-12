@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "2.3.4"
+local PCA_VERSION = "2.3.5"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -61,7 +61,7 @@ local spellTextures = {
     ["Blessing of Light"]            = "Spell_Holy_PrayerOfHealing02",
     ["Blessing of Freedom"]          = "Spell_Holy_SealOfValor",
     ["Blessing of Protection"]       = "Spell_Holy_SealOfProtection",
-    ["Holy Shield"]                  = "Ability_Paladin_HolyShield",
+    ["Holy Shield"]                  = "Spell_holy_BlessingofProtection",
 }
 
 local healingSpellPatterns = {
