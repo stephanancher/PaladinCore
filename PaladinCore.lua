@@ -1067,6 +1067,7 @@ function paladincore()
     PCA_EnsureAutoAttack()
 
     local rotSpells = GetRotationSpells()
+    local skipJudge = false
 
     -- Single loop: each slot evaluated in order; seals applied if missing,
     -- attack spells cast if ready, otherwise skip to the next slot.
@@ -1079,7 +1080,7 @@ function paladincore()
                     return
                 end
 
-                -- If Judging is LIMITED, we allow ONE judgement to apply the utility debuff
+                -- If Judging is LIMITED (Judging: NO), we still allow ONE judgement to apply utility debuffs
                 if PCA_Config.JudgingEnabled == false and spell ~= "Seal of Righteousness" and spell ~= "Seal of Command" then
                     local tex = spellTextures[spell]
                     if tex and not HasDebuffTexture("target", tex) then
@@ -1088,15 +1089,19 @@ function paladincore()
                             CastSpellByName("Judgement")
                             return
                         end
-                        -- If Judgement is on CD, wait for it (high priority to get debuff up)
-                        return
+                        return -- Wait for Judgement CD to get the debuff up
+                    end
+                end
+
+                -- Check if we should skip the filler judgement for this particular seal
+                if PCA_Config.MaintainUtilitySeals then
+                    if spell == "Seal of Wisdom" or spell == "Seal of Light" then
+                        skipJudge = true
                     end
                 end
 
                 -- seal already active → fall through to next slot
             elseif string.find(spell, "Blessing of") then
-                -- Blessings are handled by PCA_EnsureBlessing() in buff logic
-                -- but can also be manually triggered in rotation if desired
                 local tex = spellTextures[spell]
                 if tex and not HasBuffTexture("player", tex) then
                     if IsSpellReady(spell) then
@@ -1113,20 +1118,27 @@ function paladincore()
                     PCA_Config.HSCSToggle = (nextSpell == "Holy Strike") and "Crusader Strike" or "Holy Strike"
                     return
                 end
-                -- not ready → fall through to next slot
             else
                 if IsSpellReady(spell) then
                     dbg("|cff00ff00[PCA] Casting " .. spell .. "|r")
                     CastSpellByName(spell)
                     return
                 end
-                -- not ready → fall through to next slot
             end
         end
     end
 
-    -- Judgement filler — cast whenever off cooldown and all higher slots are busy
-    if PCA_Config.JudgingEnabled ~= false and IsSpellReady("Judgement") then
+    -- ── Judgement Filler Logic ───────────────────────────────────────────────
+    
+    -- Priority: Smart SoC Judgement on stuns (always burst if possible)
+    if PCA_IsSmartCommandJudgement() then
+        dbg("|cff00ff00[PCA] SoC Smart Judgement|r")
+        CastSpellByName("Judgement")
+        return
+    end
+
+    -- Normal filler logic
+    if not skipJudge and PCA_Config.JudgingEnabled ~= false and IsSpellReady("Judgement") then
         dbg("|cff00ff00[PCA] Judgement|r")
         CastSpellByName("Judgement")
         return
