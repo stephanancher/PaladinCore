@@ -295,6 +295,20 @@ local function PCA_IsExorcismPriority()
     return PCA_Config.FightingUndead and IsTargetUndead()
 end
 
+local function TargetIsStunned()
+    -- Check common stun textures on target (fist of justice, kidneyshot, bash, etc)
+    local stuns = { "fistofjustice", "kidneyshot", "bash", "mace" }
+    for _, s in ipairs(stuns) do
+        if HasDebuffTexture("target", s) then return true end
+    end
+    return false
+end
+
+local function PCA_IsSmartCommandJudgement()
+    -- Prioritize Judging Seal of Command if target is stunned (200% dmg bonus)
+    return PlayerHasSeal("Seal of Command") and TargetIsStunned() and IsSpellReady("Judgement")
+end
+
 local function UnitIsCasting(unit)
     if unit ~= "target" then return false end
     if not UnitExists("target") then return false end
