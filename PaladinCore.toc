@@ -2,7 +2,7 @@
 ## Title: PaladinCore
 ## Notes: Priority-based seal rotation with opener, pre-buff, and seal-twist support
 ## Author: Stephan
-## Version: 2.3.6
+## Version: 2.4.2
 ## SavedVariablesPerCharacter: PCA_Config
 
 PaladinCore.lua
