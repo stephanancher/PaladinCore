@@ -604,6 +604,11 @@ local function PCA_GetNextActionInfo()
         return PCA_GetSpellIconShortName("Exorcism") or "Spell_Holy_Exorcism", true
     end
 
+    -- Smart Judgement for Seal of Command on stunned targets
+    if PCA_IsSmartCommandJudgement() then
+        return PCA_GetSpellIconShortName("Judgement") or fallbackTex, true
+    end
+
     if not inCombat then
         local nextHS = PCA_Config.HSCSToggle or "Holy Strike"
         if not IsSeal(openerSpell) then
