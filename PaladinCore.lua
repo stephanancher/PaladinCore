@@ -1081,7 +1081,7 @@ function paladincore()
     end
 
     ----------------------------------------------------------------
-    -- 3) COMBAT ROTATION — Strict slot priority: 1 → 2 → 3, then Judgement
+    -- 3) COMBAT ROTATION
     ----------------------------------------------------------------
 
     -- Always ensure auto-attack is running when we have a target in combat
@@ -1090,8 +1090,35 @@ function paladincore()
     local rotSpells = GetRotationSpells()
     local skipJudge = false
 
-    -- Single loop: each slot evaluated in order; seals applied if missing,
-    -- attack spells cast if ready, otherwise skip to the next slot.
+    -- Check if we should skip the filler judgement for this particular seal
+    -- (This logic determines if we want to BURST or MAINTAIN)
+    if PCA_Config.MaintainUtilitySeals then
+        if PlayerHasSeal("Seal of Wisdom") or PlayerHasSeal("Seal of Light") or PlayerHasSeal("Seal of Command") then
+            -- ONLY judge if target is stunned (for Command 2x bonus) — otherwise keep for procs
+            if PlayerHasSeal("Seal of Command") and TargetIsStunned() then
+                skipJudge = false
+            else
+                skipJudge = true
+            end
+        end
+    end
+
+    -- ── HIGH PRIORITY: Judgement (DPS Mode) ──────────────────────────────────
+    -- Use Judgement immediately if we have ANY seal active and we aren't maintaining.
+    if not skipJudge and PCA_Config.JudgingEnabled ~= false and IsSpellReady("Judgement") then
+        local currentSeal = nil
+        for s, _ in pairs(sealNames) do
+            if PlayerHasSeal(s) then currentSeal = s; break end
+        end
+        
+        if currentSeal then
+            dbg("|cff00ff00[PCA] Priority Judgement (Burst)|r")
+            CastSpellByName("Judgement")
+            return
+        end
+    end
+
+    -- ── Normal Rotation ──
     for _, spell in ipairs(rotSpells) do
         if spell then
             if IsSeal(spell) then
@@ -1158,12 +1185,7 @@ function paladincore()
         return
     end
 
-    -- Normal filler logic
-    if not skipJudge and PCA_Config.JudgingEnabled ~= false and IsSpellReady("Judgement") then
-        dbg("|cff00ff00[PCA] Judgement|r")
-        CastSpellByName("Judgement")
-        return
-    end
+    dbg("|cffff8800[PCA] Waiting for cooldowns|r")
 
     dbg("|cffff8800[PCA] Waiting for cooldowns|r")
 end
