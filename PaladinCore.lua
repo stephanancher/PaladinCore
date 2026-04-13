@@ -1128,10 +1128,33 @@ function paladincore()
     for _, spell in ipairs(rotSpells) do
         if spell then
             if IsSeal(spell) then
-                if not PlayerHasSeal(spell) then
-                    dbg("|cff00ff00[PCA] Applying " .. spell .. "|r")
-                    CastSpellByName(spell)
-                    return
+                -- NEW: If we have a utility pre-buff (Wisdom/Light/Crusader) active, 
+                -- do NOT overwrite it until it has been judged onto the target.
+                local currentSeal = nil
+                for s, _ in pairs(sealNames) do
+                    if PlayerHasSeal(s) then currentSeal = s; break end
+                end
+
+                if currentSeal and currentSeal ~= spell then
+                    local tex = spellTextures[currentSeal]
+                    -- If it's a utility seal and target doesn't have it yet, DON'T re-seal SoC yet.
+                    if tex and not HasDebuffTexture("target", tex) and (currentSeal == "Seal of Wisdom" or currentSeal == "Seal of Light" or currentSeal == "Seal of the Crusader") then
+                        dbg("|cff00ff00[PCA] Maintaining pre-buff " .. currentSeal .. " for judging|r")
+                        -- skip the re-sealing logic for this slot
+                    else
+                        -- Not a utility seal we care about, or already judged — safe to overwrite
+                        if not PlayerHasSeal(spell) then
+                            dbg("|cff00ff00[PCA] Applying " .. spell .. "|r")
+                            CastSpellByName(spell)
+                            return
+                        end
+                    end
+                else
+                    if not PlayerHasSeal(spell) then
+                        dbg("|cff00ff00[PCA] Applying " .. spell .. "|r")
+                        CastSpellByName(spell)
+                        return
+                    end
                 end
 
                 -- If Judging is LIMITED (Judging: NO), we still allow ONE judgement to apply utility debuffs
