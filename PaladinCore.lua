@@ -266,8 +266,9 @@ local function HasBuffTexture(unit, pattern)
     while true do
         local texture = UnitBuff(unit, i)
         if not texture then return false end
-        -- Use plain text search to avoid regex issues with underscores/paths
-        if string.find(string.lower(texture), lp, 1, true) then return true end
+        -- Use plain text search; ignore absolute paths to be more robust
+        local lTex = string.lower(texture)
+        if string.find(lTex, lp, 1, true) then return true end
         i = i + 1
     end
 end
