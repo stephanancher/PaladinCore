@@ -284,15 +284,10 @@ local function HasDebuffTexture(unit, pattern)
     end
 end
 
-local function IsTargetUndead()
-    if not UnitExists("target") then return false end
-    local ct = UnitCreatureType("target")
-    -- In Turtle WoW / Vanilla, Exorcism works on Undead and Demons
-    return (ct == "Undead") or (ct == "Demon")
-end
-
-local function PCA_IsExorcismPriority()
-    return PCA_Config.FightingUndead and IsTargetUndead()
+local function PlayerHasSeal(sealName)
+    local pattern = spellTextures[sealName]
+    if not pattern then return false end
+    return HasBuffTexture("player", pattern)
 end
 
 local function TargetIsStunned()
@@ -307,6 +302,17 @@ end
 local function PCA_IsSmartCommandJudgement()
     -- Prioritize Judging Seal of Command if target is stunned (200% dmg bonus)
     return PlayerHasSeal("Seal of Command") and TargetIsStunned() and IsSpellReady("Judgement")
+end
+
+local function IsTargetUndead()
+    if not UnitExists("target") then return false end
+    local ct = UnitCreatureType("target")
+    -- In Turtle WoW / Vanilla, Exorcism works on Undead and Demons
+    return (ct == "Undead") or (ct == "Demon")
+end
+
+local function PCA_IsExorcismPriority()
+    return PCA_Config.FightingUndead and IsTargetUndead()
 end
 
 local function UnitIsCasting(unit)
