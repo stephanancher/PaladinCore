@@ -1,14 +1,14 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "2.3.6"
+local PCA_VERSION = "2.3.7"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
 local PCA_State = { alerted = false, menuBuilt = false }
 
-local defaultOpener        = "Holy Strike"
-local defaultOpenerPrebuff = "Seal of Righteousness"
-local defaultRot1          = "Seal of Righteousness"
+local defaultOpener        = "Seal of Command"
+local defaultOpenerPrebuff = "Seal of Command"
+local defaultRot1          = "Seal of Command"
 local defaultRot2          = "None"
 local defaultRot3          = "None"
 local defaultRot4          = "None"
@@ -39,7 +39,7 @@ local pcaMessages = {
 -- DevNote: Seal of the Crusader buff texture is "Spell_Holy_HolySmite"
 local spellTextures = {
     ["Seal of Righteousness"]        = "Ability_ThunderBolt",
-    ["Seal of Command"]              = "Ability_Thunderbolt",
+    ["Seal of Command"]              = "Ability_Warrior_InnerRage",
     ["Seal of Wisdom"]               = "Spell_Holy_RighteousnessAura",
     ["Seal of Light"]                = "Spell_holy_HealingAura",
     ["Seal of Justice"]              = "Spell_Holy_SealOfWrath",
@@ -554,7 +554,7 @@ local function PCA_EnsureMacro()
     local macroName = "PalCore"
     local macroBody = "/script paladincore()"
     local rot1      = PCA_Config.RotationSpell1 or defaultRot1
-    local macroIcon = spellTextures[rot1] or "Ability_ThunderBolt"
+    local macroIcon = spellTextures[rot1] or "Ability_Warrior_InnerRage"
     local idx = PCA_GetMacroIndex(macroName)
     if idx == 0 then
         CreateMacro(macroName, macroIcon, macroBody, nil, nil)
@@ -580,7 +580,7 @@ end
 local function PCA_GetNextActionInfo()
     local rotSpells   = GetRotationSpells()
     local openerSpell = PCA_Config.OpenerSpell or defaultOpener
-    local fallbackTex = spellTextures[PCA_Config.RotationSpell1 or defaultRot1] or "Ability_ThunderBolt"
+    local fallbackTex = spellTextures[PCA_Config.RotationSpell1 or defaultRot1] or "Ability_Warrior_InnerRage"
     local inCombat    = UnitAffectingCombat("player")
 
     -- Absolute priority on Exorcism when Fighting Undead is ON
@@ -1698,7 +1698,7 @@ local function PCA_BuildMenu()
     dragBtn:SetBackdropColor(0.05, 0.05, 0.4, 0.95)
     dragBtn:SetBackdropBorderColor(0.8, 0.7, 0.2, 1)
 
-    local initTex = spellTextures[PCA_Config.RotationSpell1 or defaultRot1] or "Ability_ThunderBolt"
+    local initTex = spellTextures[PCA_Config.RotationSpell1 or defaultRot1] or "Ability_Warrior_InnerRage"
     local dragTex = dragBtn:CreateTexture(nil, "ARTWORK")
     dragTex:SetTexture("Interface\\Icons\\" .. initTex)
     dragTex:SetPoint("TOPLEFT",     dragBtn, "TOPLEFT",     3, -3)
