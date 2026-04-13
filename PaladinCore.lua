@@ -1590,25 +1590,26 @@ local function PCA_BuildMenu()
     SetTip(debugBtn, "Prints detailed combat logs to your chat window (Very spammy!).")
     ySet = ySet - 30
 
-    local function PCA_GetTankingText()
-        return PCA_Config.MaintainUtilitySeals and "Are you tanking: YES" or "Are you tanking: NO"
+    local function PCA_GetProcMaintenanceText()
+        return PCA_Config.MaintainUtilitySeals and "Proc Maintenance: ON" or "Proc Maintenance: OFF"
     end
 
     local maintainBtn = CreateFrame("Button", nil, PCA_Refs.pageSettings, "UIPanelButtonTemplate")
     maintainBtn:SetWidth(210)
     maintainBtn:SetHeight(22)
     maintainBtn:SetPoint("TOP", PCA_Refs.pageSettings, "TOP", 0, ySet)
-    maintainBtn:SetText(PCA_GetTankingText())
+    maintainBtn:SetText(PCA_GetProcMaintenanceText())
     maintainBtn:SetScript("OnClick", function()
         PCA_Config.MaintainUtilitySeals = not PCA_Config.MaintainUtilitySeals
-        this:SetText(PCA_GetTankingText())
-        dbg("|cff00ccff[PCA] Tanking Mode: " .. (PCA_Config.MaintainUtilitySeals and "ON" or "OFF") .. "|r")
+        this:SetText(PCA_GetProcMaintenanceText())
+        dbg("|cff00ccff[PCA] Proc Maintenance: " .. (PCA_Config.MaintainUtilitySeals and "ON" or "OFF") .. "|r")
     end)
     maintainBtn:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Maintain Seals (Procs / Tanking)")
-        GameTooltip:AddLine("YES: Keeps your active seal (Wisdom/Light/Command) active for procs.", 1, 1, 1)
-        GameTooltip:AddLine("Recommended for tanks OR for Seal of Command procs.", 0.7, 0.7, 0.7)
+        GameTooltip:SetText("Proc Maintenance Mode")
+        GameTooltip:AddLine("ON: Keeps your seal (Command/Wisdom/Light) up for procs.", 1, 1, 1)
+        GameTooltip:AddLine("OFF: Judgement is used on cooldown for maximum burst damage.", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine("Command will still Judge on Stunned targets for the 2x bonus.", 0, 1, 0)
         GameTooltip:Show()
     end)
     maintainBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -1779,8 +1780,8 @@ function PCA_UpdateButtons()
     if PCA_AuraDropdown then
         UIDropDownMenu_SetText(PCA_Config.SelectedAura or "None", PCA_AuraDropdown)
     end
-    if PCA_Refs.rfBtnRef then
-        PCA_Refs.rfBtnRef:SetText(PCA_GetRFText())
+    if PCA_Refs.maintainBtnRef then
+        PCA_Refs.maintainBtnRef:SetText(PCA_GetProcMaintenanceText())
     end
 end
 
