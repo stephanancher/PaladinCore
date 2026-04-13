@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "2.4.2"
+local PCA_VERSION = "2.4.4"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -1100,27 +1100,32 @@ function paladincore()
         if PlayerHasSeal(s) then currentSeal = s; break end
     end
 
-    -- ── PRIORITY 1: Utility Debuff Maintenance (Danish Rule) ──────────────────
-    -- Ensure our designated utility seal (Wisdom/Light) is ALWAYS on the target first.
-    local utilSeal = PCA_Config.OpenerPrebuff or "Seal of Wisdom"
-    local utilTex = spellTextures[utilSeal]
-    local needsUtil = false
+    -- ── PRIORITY 1: Utility Maintenance (Always ensure debuff) ────────────────
+    local mainUtil = PCA_Config.OpenerPrebuff or "Seal of Wisdom"
+    local needsWisdom   = not HasDebuffTexture("target", spellTextures["Seal of Wisdom"])
+    local needsLight    = not HasDebuffTexture("target", spellTextures["Seal of Light"])
+    local needsCrusader = not HasDebuffTexture("target", "Spell_Holy_SealOfCrusader") 
+    local targetNeedsUtil = false
     
-    if utilTex and (utilSeal == "Seal of Wisdom" or utilSeal == "Seal of Light") then
-        if not HasDebuffTexture("target", utilTex) then
-            needsUtil = true
-            if currentSeal ~= utilSeal then
-                dbg("|cffff0000[PCA] Target missing debuff: Swapping to " .. utilSeal .. "|r")
-                CastSpellByName(utilSeal)
-                return
-            end
-            -- If we have it on, Judgement Priority (below) will fire it.
-            skipJudge = false 
+    if mainUtil == "Seal of Wisdom" and needsWisdom then
+        targetNeedsUtil = true
+    elseif mainUtil == "Seal of Light" and needsLight then
+        targetNeedsUtil = true
+    elseif mainUtil == "Seal of the Crusader" and needsCrusader then
+        targetNeedsUtil = true
+    end
+
+    if targetNeedsUtil then
+        if currentSeal ~= mainUtil then
+            dbg("|cffff0000[PCA] Emergency: Swapping to " .. mainUtil .. "|r")
+            CastSpellByName(mainUtil)
+            return
         end
+        -- We have the util seal on, fire it via the judgement priority (skipJudge remains false)
     end
 
     -- ── PRIORITY 2: Maintenance Logic (If no utility swap is needed) ──────────
-    if not needsUtil and PCA_Config.MaintainUtilitySeals then
+    if not targetNeedsUtil and PCA_Config.MaintainUtilitySeals then
         if currentSeal == "Seal of Wisdom" or currentSeal == "Seal of Light" or currentSeal == "Seal of Command" then
             -- ONLY judge if target is stunned (for Command 2x bonus) — otherwise keep for procs
             if currentSeal == "Seal of Command" and TargetIsStunned() then
