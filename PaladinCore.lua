@@ -1095,13 +1095,35 @@ function paladincore()
 
     local rotSpells = GetRotationSpells()
     local skipJudge = false
+    local currentSeal = nil
+    for s, _ in pairs(sealNames) do
+        if PlayerHasSeal(s) then currentSeal = s; break end
+    end
 
-    -- Check if we should skip the filler judgement for this particular seal
-    -- (This logic determines if we want to BURST or MAINTAIN)
-    if PCA_Config.MaintainUtilitySeals then
-        if PlayerHasSeal("Seal of Wisdom") or PlayerHasSeal("Seal of Light") or PlayerHasSeal("Seal of Command") then
+    -- ── PRIORITY 1: Utility Debuff Maintenance (Danish Rule) ──────────────────
+    -- Ensure our designated utility seal (Wisdom/Light) is ALWAYS on the target first.
+    local utilSeal = PCA_Config.OpenerPrebuff or "Seal of Wisdom"
+    local utilTex = spellTextures[utilSeal]
+    local needsUtil = false
+    
+    if utilTex and (utilSeal == "Seal of Wisdom" or utilSeal == "Seal of Light") then
+        if not HasDebuffTexture("target", utilTex) then
+            needsUtil = true
+            if currentSeal ~= utilSeal then
+                dbg("|cffff0000[PCA] Target missing debuff: Swapping to " .. utilSeal .. "|r")
+                CastSpellByName(utilSeal)
+                return
+            end
+            -- If we have it on, Judgement Priority (below) will fire it.
+            skipJudge = false 
+        end
+    end
+
+    -- ── PRIORITY 2: Maintenance Logic (If no utility swap is needed) ──────────
+    if not needsUtil and PCA_Config.MaintainUtilitySeals then
+        if currentSeal == "Seal of Wisdom" or currentSeal == "Seal of Light" or currentSeal == "Seal of Command" then
             -- ONLY judge if target is stunned (for Command 2x bonus) — otherwise keep for procs
-            if PlayerHasSeal("Seal of Command") and TargetIsStunned() then
+            if currentSeal == "Seal of Command" and TargetIsStunned() then
                 skipJudge = false
             else
                 skipJudge = true
@@ -1109,45 +1131,22 @@ function paladincore()
         end
     end
 
-    -- ── HIGH PRIORITY: Judgement (DPS Mode) ──────────────────────────────────
-    -- Use Judgement immediately if we have ANY seal active and we aren't maintaining.
+    -- ── PRIORITY 3: High Priority Judgement (Burst or Utility Apply) ──────────
     if not skipJudge and PCA_Config.JudgingEnabled ~= false and IsSpellReady("Judgement") then
-        local currentSeal = nil
-        for s, _ in pairs(sealNames) do
-            if PlayerHasSeal(s) then currentSeal = s; break end
-        end
-        
         if currentSeal then
-            dbg("|cff00ff00[PCA] Priority Judgement (Burst)|r")
+            dbg("|cff00ff00[PCA] Priority Judgement|r")
             CastSpellByName("Judgement")
             return
         end
     end
 
-    -- ── Normal Rotation ──
+    -- ── PRIORITY 4: Normal Rotation ──
     for _, spell in ipairs(rotSpells) do
         if spell then
             if IsSeal(spell) then
                 local currentSeal = nil
                 for s, _ in pairs(sealNames) do
                     if PlayerHasSeal(s) then currentSeal = s; break end
-                end
-
-                -- Utility Maintenance: If we are using SoC but target lacks Wisdom/Light debuff, prioritize re-applying it.
-                if spell == "Seal of Command" then
-                    local utilSeal = PCA_Config.OpenerPrebuff or "Seal of Wisdom"
-                    local utilTex = spellTextures[utilSeal]
-                    
-                    if utilTex and not HasDebuffTexture("target", utilTex) and (utilSeal == "Seal of Wisdom" or utilSeal == "Seal of Light") then
-                        if currentSeal ~= utilSeal then
-                            dbg("|cffff0000[PCA] Emergency: Swapping to " .. utilSeal .. " for debuff|r")
-                            CastSpellByName(utilSeal)
-                            return
-                        else
-                            -- We have the utility seal active, the Judgement priority at the top will handle it.
-                            break 
-                        end
-                    end
                 end
 
                 -- Regular Seal Application / Overwrite Logic
