@@ -1128,21 +1128,36 @@ function paladincore()
     for _, spell in ipairs(rotSpells) do
         if spell then
             if IsSeal(spell) then
-                -- NEW: If we have a utility pre-buff (Wisdom/Light/Crusader) active, 
-                -- do NOT overwrite it until it has been judged onto the target.
                 local currentSeal = nil
                 for s, _ in pairs(sealNames) do
                     if PlayerHasSeal(s) then currentSeal = s; break end
                 end
 
+                -- Utility Maintenance: If we are using SoC but target lacks Wisdom/Light debuff, prioritize re-applying it.
+                if spell == "Seal of Command" then
+                    local utilSeal = PCA_Config.OpenerPrebuff or "Seal of Wisdom"
+                    local utilTex = spellTextures[utilSeal]
+                    
+                    if utilTex and not HasDebuffTexture("target", utilTex) and (utilSeal == "Seal of Wisdom" or utilSeal == "Seal of Light") then
+                        if currentSeal ~= utilSeal then
+                            dbg("|cffff0000[PCA] Emergency: Swapping to " .. utilSeal .. " for debuff|r")
+                            CastSpellByName(utilSeal)
+                            return
+                        else
+                            -- We have the utility seal active, the Judgement priority at the top will handle it.
+                            break 
+                        end
+                    end
+                end
+
+                -- Regular Seal Application / Overwrite Logic
                 if currentSeal and currentSeal ~= spell then
                     local tex = spellTextures[currentSeal]
                     -- If it's a utility seal and target doesn't have it yet, DON'T re-seal SoC yet.
                     if tex and not HasDebuffTexture("target", tex) and (currentSeal == "Seal of Wisdom" or currentSeal == "Seal of Light" or currentSeal == "Seal of the Crusader") then
-                        dbg("|cff00ff00[PCA] Maintaining pre-buff " .. currentSeal .. " for judging|r")
-                        -- skip the re-sealing logic for this slot
+                        dbg("|cff00ff00[PCA] Maintaining current seal " .. currentSeal .. " for judging|r")
+                        -- Wait for judgement at the top
                     else
-                        -- Not a utility seal we care about, or already judged — safe to overwrite
                         if not PlayerHasSeal(spell) then
                             dbg("|cff00ff00[PCA] Applying " .. spell .. "|r")
                             CastSpellByName(spell)
