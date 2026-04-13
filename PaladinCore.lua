@@ -1,6 +1,6 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "2.4.4"
+local PCA_VERSION = "2.4.5"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
@@ -1104,7 +1104,7 @@ function paladincore()
     local mainUtil = PCA_Config.OpenerPrebuff or "Seal of Wisdom"
     local needsWisdom   = not HasDebuffTexture("target", spellTextures["Seal of Wisdom"])
     local needsLight    = not HasDebuffTexture("target", spellTextures["Seal of Light"])
-    local needsCrusader = not HasDebuffTexture("target", "Spell_Holy_SealOfCrusader") 
+    local needsCrusader = not HasDebuffTexture("target", "spell_holy_holysmite") 
     local targetNeedsUtil = false
     
     if mainUtil == "Seal of Wisdom" and needsWisdom then
