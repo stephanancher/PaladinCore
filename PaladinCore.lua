@@ -266,7 +266,8 @@ local function HasBuffTexture(unit, pattern)
     while true do
         local texture = UnitBuff(unit, i)
         if not texture then return false end
-        if string.find(string.lower(texture), lp) then return true end
+        -- Use plain text search to avoid regex issues with underscores/paths
+        if string.find(string.lower(texture), lp, 1, true) then return true end
         i = i + 1
     end
 end
@@ -1095,7 +1096,7 @@ function paladincore()
 
                 -- Check if we should skip the filler judgement for this particular seal
                 if PCA_Config.MaintainUtilitySeals then
-                    if spell == "Seal of Wisdom" or spell == "Seal of Light" then
+                    if spell == "Seal of Wisdom" or spell == "Seal of Light" or spell == "Seal of Command" then
                         skipJudge = true
                     end
                 end
@@ -1605,9 +1606,9 @@ local function PCA_BuildMenu()
     end)
     maintainBtn:SetScript("OnEnter", function()
         GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Tanking / Utility Mode")
-        GameTooltip:AddLine("YES: Keeps your active seal (Wisdom/Light) for procs.", 1, 1, 1)
-        GameTooltip:AddLine("Recommended for tanks to maintain mana/health.", 0.7, 0.7, 0.7)
+        GameTooltip:SetText("Maintain Seals (Procs / Tanking)")
+        GameTooltip:AddLine("YES: Keeps your active seal (Wisdom/Light/Command) active for procs.", 1, 1, 1)
+        GameTooltip:AddLine("Recommended for tanks OR for Seal of Command procs.", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
     maintainBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
