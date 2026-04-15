@@ -1,6 +1,6 @@
 # PaladinCore Addon — Developer Notes
 
-## Current Version: `2.3.6`
+## Current Version: `2.9.14`
 
 > **Rule: bump the version on every meaningful change.**
 > Update `local PCA_VERSION` in `PaladinCore.lua` AND `## Version:` in `PaladinCore.toc`.
@@ -30,6 +30,17 @@
 ---
 
 ### Changelog
+| 2.5.6 | **UI Perfection**: Implemented 'Sticky Fallback'. The icon now strictly holds on your last attack (dimmed) until the next action is ready, preventing 'flipping' between skills on CD. |
+| 2.5.4 | **Stability Restoration**: Fixed severe syntax corruption (else without if) in `paladincore()` that was introduced during a partial edit. Bumping version. |
+| 2.5.3 | **Logic Corruption Cleanup**: Documented the "nested loop" bug that temporarily broke non-seal attacks. Finalized UI icon fallback for utility maintenance. |
+| 2.5.2 | UI Polish: Fallback display now strictly prefers Last Cast (dimmed) over utility seals during global cooldown. |
+| 2.5.1 | Fixed icon prediction to mirror Maintenance Wait logic (prevents ghost Seal of Wisdom icon). |
+| 2.5.0 | **Stability Restoration**: Fixed severe logic nesting error in the rotation loop that caused non-seal attacks to be ignored. Fixed Lua nil value error by re-ordering function definitions. Bumping to major version for stability lock. |
+| 2.4.9 | Restoration of rotation logic integrity after nesting error. |
+| 2.4.8 | Fix for function definition order (nil value error in `PCA_Cast`). |
+| 2.4.7 | UI Improvement: All-cooldown fallback now displays the last casted spell (dimmed) instead of the Slot 1 seal. |
+| 2.4.6 | Fixed initialization timing bug where SavedVariables were being overwritten by defaults in Opener/Rotation slots. |
+| 2.4.5 | Added support for Seal of Command priority and finalized 4-slot rotation for Turtle WoW. |
 | 2.3.6 | Enabled manual buffing via the 'Pre-buff (out of range)' setting even when no target is currently selected. |
 | 2.3.5 | Updated Holy Shield texture to 'Spell_holy_BlessingofProtection' for improved Turtle WoW compatibility. |
 | 2.3.4 | Restricted Rotation Slot 1 to Seals only and renamed to '1. (Seals)' for better rotation guidance. |
@@ -108,6 +119,12 @@ These functions are **TBC+ only** and will cause `attempt to call global ... (a 
 - `SetCooldown()` on CooldownFrame — not exposed as a Lua method; use `SetAlpha()` instead
 - `StartAttack()` — does not exist; use `AttackTarget()` guarded by swing-timer check
 - `IsAttacking()` — does not exist; detect via `GetSpellCooldown` on the Attack spell slot
+
+### 10. Spell Lookup Null-Safety
+`FindSpell(name)` and `IsSpellReady(name)` MUST be null-safe. Passing `nil` or `"None"` to `string.find` or `GetSpellCooldown` will crash the `OnUpdate` loop, causing the prediction icons and rotation to freeze. Always check if the spell name exists before attempting lookup.
+
+### 11. Maintenance Mode (Tanking)
+The `MaintainUtilitySeals` (Proc Maintenance) toggle is designed to skip filler Judgements for **Seal of Wisdom**, **Seal of Light**, and **Seal of Command**. If a user reports the rotation "stopped judging", verify that this toggle isn't active for a seal they intend to judge. SoR and SotC are NOT in this skip list to ensure threat/debuff maintenance.
 
 ### 9. `AttackTarget()` is a TOGGLE — never call it blindly
 In vanilla WoW, `AttackTarget()` toggles auto-attack on **and** off. Always guard

@@ -1,10 +1,10 @@
 PCA_Config = PCA_Config or {}
 
-local PCA_VERSION = "2.4.5"
+local PCA_VERSION = "2.9.14"
 
 -- Use tables to avoid "too many upvalues" limit (limit=32 in Lua 5.0/Vanilla)
 local PCA_Refs  = {}
-local PCA_State = { alerted = false, menuBuilt = false }
+local PCA_State = { alerted = false, menuBuilt = false, lastCastIcon = "Ability_Warrior_InnerRage" }
 
 local defaultOpener        = "Seal of Command"
 local defaultOpenerPrebuff = "Seal of Command"
@@ -193,22 +193,57 @@ local function PCA_SendSync(msg)
     end
 end
 
-local function PCA_DebugBuffs()
-    DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00PaladinCore — Player buffs:|r")
-    local i = 1
-    while true do
-        local texture = UnitBuff("player", i)
-        if not texture then break end
-        DEFAULT_CHAT_FRAME:AddMessage("  [" .. i .. "] " .. texture)
-        i = i + 1
+local PCADebugTextFrame = CreateFrame("Frame", "PCADebugTextFrame", UIParent)
+PCADebugTextFrame:SetWidth(400)
+PCADebugTextFrame:SetHeight(50)
+PCADebugTextFrame:SetPoint("TOP", UIParent, "TOP", 0, -150)
+PCADebugTextFrame.text = PCADebugTextFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+PCADebugTextFrame.text:SetAllPoints()
+PCADebugTextFrame.text:SetText("")
+PCADebugTextFrame:Hide()
+
+local function PCA_UpdateActionIcon()
+    -- Enable system even if menu isn't built yet
+    local icon, ready = PCA_GetNextActionInfo()
+    if not icon then return end
+    
+    if PCA_Config.Debug then
+        PCADebugTextFrame:Show()
+        PCADebugTextFrame.text:SetText("|cff00ffff[PaladinCore] Icon Predictor:|r " .. tostring(icon))
+    else
+        PCADebugTextFrame:Hide()
     end
-    DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00PaladinCore — Target debuffs:|r")
-    i = 1
-    while true do
-        local texture = UnitDebuff("target", i)
-        if not texture then break end
-        DEFAULT_CHAT_FRAME:AddMessage("  [" .. i .. "] " .. texture)
-        i = i + 1
+    
+    -- Scan all 120 possible action slots for the "PalCore" macro
+    for i = 1, 120 do
+        local type, id = GetActionInfo(i)
+        if type == "macro" then
+            local name = GetMacroInfo(id)
+            if name == "PalCore" then
+                local iconFrame = getglobal("ActionButton"..i.."Icon")
+                if iconFrame then
+                    iconFrame:SetTexture("Interface\\Icons\\" .. icon)
+                    if ready then
+                        iconFrame:SetVertexColor(1, 1, 1, 1)
+                    else
+                        iconFrame:SetVertexColor(0.4, 0.4, 0.4, 1)
+                    end
+                end
+                
+                -- Support for BonusActionButtons (main bar page swapping)
+                if i <= 12 then
+                    local bonusFrame = getglobal("BonusActionButton"..i.."Icon")
+                    if bonusFrame then
+                        bonusFrame:SetTexture("Interface\\Icons\\" .. icon)
+                        if ready then
+                            bonusFrame:SetVertexColor(1, 1, 1, 1)
+                        else
+                            bonusFrame:SetVertexColor(0.4, 0.4, 0.4, 1)
+                        end
+                    end
+                end
+            end
+        end
     end
 end
 
@@ -223,7 +258,8 @@ end
 -- ── Spell / buff helpers ──────────────────────────────────────────────────────
 
 local function FindSpell(name)
-    for i = 1, 200 do
+    if not name or name == "None" then return nil end
+    for i = 1, 256 do
         local n = GetSpellName(i, BOOKTYPE_SPELL)
         if not n then break end
         if string.find(n, name) then return i end
@@ -232,6 +268,7 @@ local function FindSpell(name)
 end
 
 local function IsSpellReady(name)
+    if not name or name == "None" then return false end
     local slot = FindSpell(name)
     if not slot then return false end
     local start, dur = GetSpellCooldown(slot, BOOKTYPE_SPELL)
@@ -239,7 +276,16 @@ local function IsSpellReady(name)
     return (GetTime() - start) >= dur
 end
 
+local function PlayerKnowsSpell(spellName)
+    if not spellName or spellName == "None" then return false end
+    if spellName == COMBO_HS_CS then
+        return FindSpell("Holy Strike") ~= nil or FindSpell("Crusader Strike") ~= nil
+    end
+    return FindSpell(spellName) ~= nil
+end
+
 local function PlayerKnowsBlessing(blessingName)
+    if not blessingName or blessingName == "None" then return false end
     return FindSpell(blessingName) ~= nil
 end
 
@@ -259,39 +305,96 @@ local function PCA_EnsureAutoAttack()
     end
 end
 
-
 local function HasBuffTexture(unit, pattern)
     local lp = string.lower(pattern)
-    local i = 1
-    while true do
-        local texture = UnitBuff(unit, i)
-        if not texture then return false end
-        -- Use plain text search; ignore absolute paths to be more robust
-        local lTex = string.lower(texture)
-        if string.find(lTex, lp, 1, true) then return true end
-        i = i + 1
+    for i = 1, 32 do
+        local tex = UnitBuff(unit, i)
+        if not tex then break end
+        if string.find(string.lower(tex), lp) then return true end
     end
+    return false
 end
 
-local function HasDebuffTexture(unit, pattern)
-    local lp = string.lower(pattern)
-    local i = 1
-    while true do
-        local texture = UnitDebuff(unit, i)
-        if not texture then return false end
-        if string.find(string.lower(texture), lp) then return true end
-        i = i + 1
+-- ── Tooltip Scanner (for 100% accurate 1.12 buff names) ───────────────────
+local PCAScanner = CreateFrame("GameTooltip", "PCA_ScannerTooltip", nil, "GameTooltipTemplate")
+PCAScanner:SetOwner(WorldFrame, "ANCHOR_NONE")
+
+local function UnitHasAuraByNameAndTexture(unit, auraSubstring, texturePattern, isDebuff)
+    local lowerAura = string.lower(auraSubstring)
+    local lowerTex  = texturePattern and string.lower(texturePattern) or "xxxxx"
+    
+    for i = 1, 40 do
+        PCA_ScannerTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+        PCA_ScannerTooltip:ClearLines()
+        
+        -- Use the native API to see if the buff exists at all first
+        local tex = nil
+        if isDebuff then
+            tex = UnitDebuff(unit, i)
+            if tex then PCA_ScannerTooltip:SetUnitDebuff(unit, i) end
+        else
+            tex = UnitBuff(unit, i)
+            if tex then PCA_ScannerTooltip:SetUnitBuff(unit, i) end
+        end
+        
+        if not tex then break end -- Reliable way to check end of buffs array
+        
+        -- Verification 1: Texture Match (Best for non-English clients)
+        if string.find(string.lower(tex), lowerTex) then
+            return true
+        end
+        
+        -- Verification 2: Tooltip Scan (Best for English clients with HD texture mods)
+        local textObj = getglobal("PCA_ScannerTooltipTextLeft1")
+        local text = textObj and textObj:GetText()
+        if text and string.find(string.lower(text), lowerAura) then
+            return true
+        end
     end
+    return false
 end
 
 local function PlayerHasSeal(sealName)
-    local pattern = spellTextures[sealName]
-    if not pattern then return false end
-    return HasBuffTexture("player", pattern)
+    if not sealName or sealName == "None" then return false end
+    local texPat = spellTextures[sealName] or "seal"
+    return UnitHasAuraByNameAndTexture("player", sealName, texPat, false)
+end
+
+local function TargetHasUtilityDebuff(sealName)
+    if not sealName or sealName == "None" then return false end
+    
+    local texPat = spellTextures[sealName] or "seal"
+    if sealName == "Seal of the Crusader" then
+        texPat = "spell_holy_holysmite"
+    end
+    
+    -- Filter out prefix to match both buff and judgement debuff names
+    local core = string.gsub(sealName, "Seal of ", "")
+    core = string.gsub(core, "the ", "")
+    return UnitHasAuraByNameAndTexture("target", core, texPat, true)
+end
+
+local function HasDebuffTexture(unit, patternFilter)
+    local isPath = string.find(patternFilter, "\\") or string.find(patternFilter, "/")
+    local lp = string.lower(patternFilter)
+    
+    for i = 1, 40 do 
+        local tex, count, name = UnitDebuff(unit, i)
+        if not tex then break end
+        
+        if isPath then
+            if tex == patternFilter then return true end
+        end
+        
+        -- Fallback: partial match on the texture filename or debuff name
+        if string.find(string.lower(tex), lp) then return true end
+        if name and string.find(string.lower(name), lp) then return true end
+    end
+    return false
 end
 
 local function TargetIsStunned()
-    -- Check common stun textures on target (fist of justice, kidneyshot, bash, etc)
+    -- Substring matches for common stun icon names
     local stuns = { "fistofjustice", "kidneyshot", "bash", "mace" }
     for _, s in ipairs(stuns) do
         if HasDebuffTexture("target", s) then return true end
@@ -374,7 +477,9 @@ local function GetEffectiveSpell(spellName)
        and UnitExists("target") then
         local tex = spellTextures[spellName]
         if tex and HasDebuffTexture("target", tex) then
-            return "Seal of Righteousness"  -- debuff up, switch to SoR for judging
+            if PlayerKnowsSpell("Seal of Righteousness") then
+                return "Seal of Righteousness"  -- debuff up, switch to SoR for judging
+            end
         end
     end
     return spellName
@@ -387,10 +492,16 @@ local function GetRotationSpells()
     local s3 = PCA_Config.RotationSpell3 or defaultRot3
     local s4 = PCA_Config.RotationSpell4 or defaultRot4
     
-    rotList[1] = GetEffectiveSpell(s1)
-    rotList[2] = GetEffectiveSpell(s2)
-    rotList[3] = GetEffectiveSpell(s3)
-    rotList[4] = GetEffectiveSpell(s4)
+    local rawList = {s1, s2, s3, s4}
+    local idx = 1
+    for i = 1, 4 do rotList[i] = "None" end
+    
+    for _, s in ipairs(rawList) do
+        if s and s ~= "None" and PlayerKnowsSpell(s) then
+            rotList[idx] = GetEffectiveSpell(s)
+            idx = idx + 1
+        end
+    end
     return rotList
 end
 
@@ -602,7 +713,7 @@ end
 local function PCA_GetNextActionInfo()
     local rotSpells   = GetRotationSpells()
     local openerSpell = PCA_Config.OpenerSpell or defaultOpener
-    local fallbackTex = spellTextures[PCA_Config.RotationSpell1 or defaultRot1] or "Ability_Warrior_InnerRage"
+    local fallbackTex = "Ability_Warrior_InnerRage" -- Preferred fallback (Command)
     local inCombat    = UnitAffectingCombat("player")
 
     -- Absolute priority on Exorcism when Fighting Undead is ON
@@ -619,54 +730,74 @@ local function PCA_GetNextActionInfo()
         local nextHS = PCA_Config.HSCSToggle or "Holy Strike"
         if not IsSeal(openerSpell) then
             local castSpell = (openerSpell == COMBO_HS_CS) and nextHS or openerSpell
-            if UnitExists("target") and IsSpellReady(castSpell) then
+            if UnitExists("target") and PlayerKnowsSpell(castSpell) and IsSpellReady(castSpell) then
                 return PCA_GetSpellIconShortName(castSpell) or fallbackTex, true
             end
             local prebuff = GetEffectiveSpell(PCA_Config.OpenerPrebuff or defaultOpenerPrebuff)
-            if prebuff ~= "None" and not PlayerHasSeal(prebuff) then
+            if prebuff and prebuff ~= "None" and PlayerKnowsSpell(prebuff) and not PlayerHasSeal(prebuff) then
                 -- Seal application has no cooldown gate — always ready
                 return spellTextures[prebuff] or fallbackTex, IsSpellReady(prebuff)
             end
-            return PCA_GetSpellIconShortName(castSpell) or fallbackTex, IsSpellReady(castSpell)
+            if PlayerKnowsSpell(castSpell) then
+                return PCA_GetSpellIconShortName(castSpell) or fallbackTex, IsSpellReady(castSpell)
+            end
         else
-            if not PlayerHasSeal(openerSpell) then
+            if openerSpell and openerSpell ~= "None" and PlayerKnowsSpell(openerSpell) and not PlayerHasSeal(openerSpell) then
                 return spellTextures[openerSpell] or fallbackTex, IsSpellReady(openerSpell)
             end
         end
         return fallbackTex, false
     end
 
-    -- ── In combat: strict slot priority 1 → 2 → 3, then Judgement filler ──────
+    local currentSeal = nil
+    for s, _ in pairs(sealNames) do
+        if PlayerHasSeal(s) then currentSeal = s; break end
+    end
+
+    -- Utility Fulfilled check: if we have the seal AND the target has the debuff, we are 'done' with this seal
+    local isUtilSeal = (currentSeal == "Seal of Wisdom" or currentSeal == "Seal of Light" or currentSeal == "Seal of the Crusader")
+    local utilFulfilled = false
+    if currentSeal and isUtilSeal then
+        local tex = (currentSeal == "Seal of the Crusader") and "spell_holy_holysmite" or spellTextures[currentSeal]
+        if tex and HasDebuffTexture("target", tex) then
+            utilFulfilled = true
+        end
+    end
+
     local nextHS     = PCA_Config.HSCSToggle or "Holy Strike"
-    local judgeIcon  = PCA_GetSpellIconShortName("Judgement") or fallbackTex
-    local firstOnCdIcon = nil  -- icon of the first slot that is on cooldown (dimmed fallback)
+    local judgeIcon  = PCA_GetSpellIconShortName("Judgement") or "Spell_Holy_Righteousness"
+    local fallbackTex = "Ability_Warrior_InnerRage"
 
     for _, spell in ipairs(rotSpells) do
         if spell then
             if IsSeal(spell) then
-                if not PlayerHasSeal(spell) then
-                    -- Missing seal — applying it is the next action
-                    return spellTextures[spell] or fallbackTex, IsSpellReady(spell)
-                end
-
-                -- If Judging is LIMITED, we allow ONE judgement to apply the utility debuff
-                if PCA_Config.JudgingEnabled == false and spell ~= "Seal of Righteousness" and spell ~= "Seal of Command" then
-                    local tex = spellTextures[spell]
-                    if tex and not HasDebuffTexture("target", tex) then
-                        local jIcon = PCA_GetSpellIconShortName("Judgement") or fallbackTex
-                        return jIcon, IsSpellReady("Judgement")
+                local isSpellUtil = (spell == "Seal of Wisdom" or spell == "Seal of Light" or spell == "Seal of the Crusader")
+                local hasIt  = PlayerHasSeal(spell)
+                
+                -- Check for utility fulfillment (Debuff on target)
+                local onTarget = TargetHasUtilityDebuff(spell)
+                
+                local protectingUtility = false
+                if currentSeal and currentSeal ~= spell then
+                    local isCurrentUtil = (currentSeal == "Seal of Wisdom" or currentSeal == "Seal of Light" or currentSeal == "Seal of the Crusader")
+                    if isCurrentUtil and not TargetHasUtilityDebuff(currentSeal) then
+                        protectingUtility = true
                     end
                 end
-
-                -- Seal active → fall through to next slot
+                
+                -- ULTRA-STRICT: If we have the buff OR the debuff is on target, we skip seal application prompts.
+                -- This ensures the icon focuses purely on damage rotation until maintenance is actually needed.
+                if protectingUtility or onTarget or hasIt then
+                    -- Goal met or overridden; skip.
+                elseif IsSpellReady(spell) then
+                    return (spellTextures[spell] or fallbackTex), true
+                end
             else
                 local castSpell = (spell == COMBO_HS_CS) and nextHS or spell
-                local icon      = PCA_GetSpellIconShortName(castSpell) or fallbackTex
-                if not firstOnCdIcon then firstOnCdIcon = icon end
                 if IsSpellReady(castSpell) then
+                    local icon = PCA_GetSpellIconShortName(castSpell) or fallbackTex
                     return icon, true
                 end
-                -- On cooldown → fall through to next slot
             end
         end
     end
@@ -676,8 +807,9 @@ local function PCA_GetNextActionInfo()
         return judgeIcon, true
     end
 
-    -- Everything is on cooldown; show the first busy slot dimmed
-    return firstOnCdIcon or judgeIcon, false
+    -- Everything is on cooldown; strictly show the last used attack action (dimmed)
+    local finalIcon = PCA_State.lastCastIcon
+    return finalIcon, false
 end
 
 -- ── Addon load ────────────────────────────────────────────────────────────────
@@ -706,6 +838,12 @@ function PCA_OnLoad()
         end)
     end
 
+    -- Migration and default logic moved to PCA_InitConfig()
+    PCA_InitConfig() -- Also call initially to set up UI frames if they exist
+    PCA_SetupFrames() 
+end
+
+function PCA_InitConfig()
     -- Migrate old config keys
     if PCA_Config.Seal and not PCA_Config.RotationSpell1 then
         PCA_Config.RotationSpell1 = PCA_Config.Seal
@@ -727,7 +865,7 @@ function PCA_OnLoad()
     if not PCA_Config.SelectedAura   then PCA_Config.SelectedAura   = "None"               end
     if not PCA_Config.SelectedBlessing then PCA_Config.SelectedBlessing = "None"            end
     if PCA_Config.MaintainRF     == nil then PCA_Config.MaintainRF     = false             end
-    if PCA_Config.MaintainBS     == nil then PCA_Config.MaintainBS     = false             end  -- legacy, can remove later
+    if PCA_Config.MaintainBS     == nil then PCA_Config.MaintainBS     = false             end 
     if PCA_Config.Debug          == nil then PCA_Config.Debug          = false end
     if PCA_Config.FightingUndead == nil then PCA_Config.FightingUndead = false end
 
@@ -752,11 +890,15 @@ function PCA_OnLoad()
     if PCA_Config.MaintainUtilitySeals == nil then PCA_Config.MaintainUtilitySeals = false end
     if PCA_Config.UIScale        == nil then PCA_Config.UIScale        = 0.85 end
 
-    -- Set title to full name + version
+    -- Set title after config is ready
     if PCATitle then
         PCATitle:SetFont("Fonts\\FRIZQT__.TTF", 16)
         PCATitle:SetText("PaladinCore  V" .. PCA_VERSION)
     end
+    
+    PCA_EnsureMacro()
+end
+function PCA_SetupFrames()
     if PCASubTitle then
         PCASubTitle:SetFont("Fonts\\FRIZQT__.TTF", 12)
         PCASubTitle:SetText("")
@@ -784,6 +926,7 @@ function PCA_OnLoad()
 
     iconFrame:SetScript("OnEvent", function()
         if event == "VARIABLES_LOADED" then
+            PCA_InitConfig()
             if PCA_MinimapButton_UpdatePosition then
                 PCA_MinimapButton_UpdatePosition()
             end
@@ -866,6 +1009,8 @@ function PCA_OnLoad()
         end
 
         local shortName, isReady = PCA_GetNextActionInfo()
+
+        PCA_State.lastCastIcon = shortName
 
         -- Dim the settings-panel drag button when next spell is on cooldown
         if PCA_Refs.dragBtnTex then
@@ -966,6 +1111,24 @@ end
 -- ── Rotation ──────────────────────────────────────────────────────────────────
 -- Opener:   cast OpenerSpell (HS attack OR seal pre-buff)
 -- Combat:   check slots 1→2→3 in priority order each press, then Judgement
+
+local function PCA_Cast(spellName)
+    if not spellName or spellName == "None" then return end
+    
+    local icon = PCA_GetSpellIconShortName(spellName)
+    if not icon and IsSeal(spellName) then
+        icon = spellTextures[spellName]
+    end
+    
+    -- Exclude ALL seals and blessings from the fallback display.
+    -- We only want actual attacks (like Holy Strike) to persist on the UI when everything is on cooldown.
+    local isAttack = not IsSeal(spellName) and not string.find(spellName, "Blessing")
+    if icon and isAttack then
+        PCA_State.lastCastIcon = icon
+    end
+
+    CastSpellByName(spellName)
+end
 
 function paladincore()
     -- ── 0) TARGETING & AUTO-ATTACK ───────────────────────────────────────────
@@ -1102,23 +1265,19 @@ function paladincore()
 
     -- ── PRIORITY 1: Utility Maintenance (Always ensure debuff) ────────────────
     local mainUtil = PCA_Config.OpenerPrebuff or "Seal of Wisdom"
-    local needsWisdom   = not HasDebuffTexture("target", spellTextures["Seal of Wisdom"])
-    local needsLight    = not HasDebuffTexture("target", spellTextures["Seal of Light"])
-    local needsCrusader = not HasDebuffTexture("target", "spell_holy_holysmite") 
     local targetNeedsUtil = false
     
-    if mainUtil == "Seal of Wisdom" and needsWisdom then
-        targetNeedsUtil = true
-    elseif mainUtil == "Seal of Light" and needsLight then
-        targetNeedsUtil = true
-    elseif mainUtil == "Seal of the Crusader" and needsCrusader then
-        targetNeedsUtil = true
+    if mainUtil ~= "None" and IsSeal(mainUtil) and PlayerKnowsSpell(mainUtil) then
+        local isUtil = (mainUtil == "Seal of Wisdom" or mainUtil == "Seal of Light" or mainUtil == "Seal of the Crusader")
+        if isUtil and not TargetHasUtilityDebuff(mainUtil) then
+            targetNeedsUtil = true
+        end
     end
 
     if targetNeedsUtil then
-        if currentSeal ~= mainUtil then
+        if not PlayerHasSeal(mainUtil) then
             dbg("|cffff0000[PCA] Emergency: Swapping to " .. mainUtil .. "|r")
-            CastSpellByName(mainUtil)
+            PCA_Cast(mainUtil)
             return
         end
         -- We have the util seal on, fire it via the judgement priority (skipJudge remains false)
@@ -1140,7 +1299,7 @@ function paladincore()
     if not skipJudge and PCA_Config.JudgingEnabled ~= false and IsSpellReady("Judgement") then
         if currentSeal then
             dbg("|cff00ff00[PCA] Priority Judgement|r")
-            CastSpellByName("Judgement")
+            PCA_Cast("Judgement")
             return
         end
     end
@@ -1156,33 +1315,32 @@ function paladincore()
 
                 -- Regular Seal Application / Overwrite Logic
                 if currentSeal and currentSeal ~= spell then
-                    local tex = spellTextures[currentSeal]
                     -- If it's a utility seal and target doesn't have it yet, DON'T re-seal SoC yet.
-                    if tex and not HasDebuffTexture("target", tex) and (currentSeal == "Seal of Wisdom" or currentSeal == "Seal of Light" or currentSeal == "Seal of the Crusader") then
+                    local isUtil = (currentSeal == "Seal of Wisdom" or currentSeal == "Seal of Light" or currentSeal == "Seal of the Crusader")
+                    if isUtil and not TargetHasUtilityDebuff(currentSeal) then
                         dbg("|cff00ff00[PCA] Maintaining current seal " .. currentSeal .. " for judging|r")
                         -- Wait for judgement at the top
                     else
                         if not PlayerHasSeal(spell) then
                             dbg("|cff00ff00[PCA] Applying " .. spell .. "|r")
-                            CastSpellByName(spell)
+                            PCA_Cast(spell)
                             return
                         end
                     end
                 else
                     if not PlayerHasSeal(spell) then
                         dbg("|cff00ff00[PCA] Applying " .. spell .. "|r")
-                        CastSpellByName(spell)
+                        PCA_Cast(spell)
                         return
                     end
                 end
 
                 -- If Judging is LIMITED (Judging: NO), we still allow ONE judgement to apply utility debuffs
                 if PCA_Config.JudgingEnabled == false and spell ~= "Seal of Righteousness" and spell ~= "Seal of Command" then
-                    local tex = spellTextures[spell]
-                    if tex and not HasDebuffTexture("target", tex) then
+                    if not TargetHasUtilityDebuff(spell) then
                         if IsSpellReady("Judgement") then
                             dbg("|cff00ff00[PCA] Judging: Applying initial " .. spell .. " debuff|r")
-                            CastSpellByName("Judgement")
+                            PCA_Cast("Judgement")
                             return
                         end
                         return -- Wait for Judgement CD to get the debuff up
@@ -1202,7 +1360,7 @@ function paladincore()
                 if tex and not HasBuffTexture("player", tex) then
                     if IsSpellReady(spell) then
                         dbg("|cff00ff00[PCA] Casting " .. spell .. "|r")
-                        CastSpellByName(spell)
+                        PCA_Cast(spell)
                         return
                     end
                 end
@@ -1210,14 +1368,14 @@ function paladincore()
                 local nextSpell = PCA_Config.HSCSToggle or "Holy Strike"
                 if IsSpellReady(nextSpell) then
                     dbg("|cff00ff00[PCA] Combo: Casting " .. nextSpell .. "|r")
-                    CastSpellByName(nextSpell)
+                    PCA_Cast(nextSpell)
                     PCA_Config.HSCSToggle = (nextSpell == "Holy Strike") and "Crusader Strike" or "Holy Strike"
                     return
                 end
             else
                 if IsSpellReady(spell) then
                     dbg("|cff00ff00[PCA] Casting " .. spell .. "|r")
-                    CastSpellByName(spell)
+                    PCA_Cast(spell)
                     return
                 end
             end
@@ -1229,7 +1387,7 @@ function paladincore()
     -- Priority: Smart SoC Judgement on stuns (always burst if possible)
     if PCA_IsSmartCommandJudgement() then
         dbg("|cff00ff00[PCA] SoC Smart Judgement|r")
-        CastSpellByName("Judgement")
+        PCA_Cast("Judgement")
         return
     end
 
@@ -1891,6 +2049,102 @@ function PCA_OpenMenu()
     PCAFrame:Show()
 end
 
+-- ── Icon Prediction Debug Tool ────────────────────────────────────────────────
+local function PCA_DebugNextIcon()
+    DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00--- PCA Icon Prediction Trace ---|r")
+    
+    local rotSpells = {
+        PCA_Config.RotationSpell1 or defaultRot1,
+        PCA_Config.RotationSpell2 or defaultRot2,
+        PCA_Config.RotationSpell3 or defaultRot3,
+        PCA_Config.RotationSpell4 or defaultRot4,
+    }
+    local inCombat = UnitAffectingCombat("player")
+    DEFAULT_CHAT_FRAME:AddMessage("Combat Status: " .. tostring(inCombat))
+    
+    if PCA_IsExorcismPriority() and IsSpellReady("Exorcism") then
+        DEFAULT_CHAT_FRAME:AddMessage("=> Exorcism (Priority)")
+        return
+    end
+    
+    if PCA_IsSmartCommandJudgement() then
+        DEFAULT_CHAT_FRAME:AddMessage("=> Judgement (Smart SoC)")
+        return
+    end
+    
+    if not inCombat then
+        DEFAULT_CHAT_FRAME:AddMessage("=> Using Out-of-Combat Opener Logic")
+        return
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage("Rotation Eval:")
+    for i, spell in ipairs(rotSpells) do
+        if spell and spell ~= "None" then
+            if IsSeal(spell) then
+                local isUtil = (spell == "Seal of Wisdom" or spell == "Seal of Light" or spell == "Seal of the Crusader")
+                local hasIt  = PlayerHasSeal(spell)
+                local onTarget = isUtil and TargetHasUtilityDebuff(spell) or false
+                DEFAULT_CHAT_FRAME:AddMessage("  [" .. i .. "] " .. spell .. " (Seal)")
+                DEFAULT_CHAT_FRAME:AddMessage("      - isUtil: " .. tostring(isUtil) .. ", hasIt: " .. tostring(hasIt) .. ", onTarget: " .. tostring(onTarget))
+                
+                if (isUtil and onTarget) or hasIt then
+                    DEFAULT_CHAT_FRAME:AddMessage("      => SKIPPED (Goal Met)")
+                elseif IsSpellReady(spell) then
+                    DEFAULT_CHAT_FRAME:AddMessage("      => SELECTED -> " .. spell)
+                    return
+                else
+                    DEFAULT_CHAT_FRAME:AddMessage("      => SKIPPED (Not Ready)")
+                end
+            else
+                local nextHS = PCA_Config.HSCSToggle or "Holy Strike"
+                local castSpell = (spell == COMBO_HS_CS) and nextHS or spell
+                DEFAULT_CHAT_FRAME:AddMessage("  [" .. i .. "] " .. castSpell .. " (Attack)")
+                
+                if IsSpellReady(castSpell) then
+                    DEFAULT_CHAT_FRAME:AddMessage("      => SELECTED -> " .. castSpell)
+                    return
+                else
+                    DEFAULT_CHAT_FRAME:AddMessage("      => SKIPPED (On Cooldown)")
+                end
+            end
+        end
+    end
+    
+    if PCA_Config.JudgingEnabled ~= false and IsSpellReady("Judgement") then
+        DEFAULT_CHAT_FRAME:AddMessage("=> SELECTED -> Judgement (Filler)")
+        return
+    end
+    
+    DEFAULT_CHAT_FRAME:AddMessage("=> ALL SKIPPED. Showing Fallback Icon: " .. tostring(PCA_State.lastCastIcon))
+end
+
+-- ── Startup Initialization ──────────────────────────────────────────────────
+local PCA_InitFrame = CreateFrame("Frame")
+PCA_InitFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+local pca_has_initialized = false
+local pca_init_timer = 0
+PCA_InitFrame:SetScript("OnEvent", function()
+    if not pca_has_initialized then
+        PCA_InitFrame:SetScript("OnUpdate", function()
+            pca_init_timer = pca_init_timer + 1
+            if pca_init_timer > 60 then
+                PCA_InitFrame:SetScript("OnUpdate", nil)
+                pca_has_initialized = true
+                DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00[PaladinCore]|r v" .. PCA_VERSION .. " loaded.")
+                if FindSpell("Seal of Command") then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00[PaladinCore]|r Found Seal of Command -> |cff00ffffEnable DPS Mode|r")
+                elseif FindSpell("Holy Shield") then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00[PaladinCore]|r Found Holy Shield -> |cff00ffffEnable Tank Mode|r")
+                elseif FindSpell("Holy Shock") then
+                    DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00[PaladinCore]|r Found Holy Shock -> |cff00ffffEnable Healer Mode|r")
+                else
+                    DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00[PaladinCore]|r Scanning... Standard Paladin Mode")
+                end
+            end
+        end)
+    end
+end)
+
 -- ── Slash Commands ────────────────────────────────────────────────────────────
 
 SLASH_PCA1 = "/pca"
@@ -1901,6 +2155,8 @@ SlashCmdList["PCA"] = function(msg)
         PCA_SendSync("REQ")
     elseif string.find(cmd, "buffs") then
         PCA_DebugBuffs()
+    elseif string.find(cmd, "trace") then
+        PCA_DebugNextIcon()
     else
         PCA_OpenMenu()
     end
@@ -1908,3 +2164,49 @@ end
 
 SLASH_PCABUFFS1 = "/pcabuffs"
 SlashCmdList["PCABUFFS"] = PCA_DebugBuffs
+
+SLASH_PCATRACE1 = "/pcatrace"
+SlashCmdList["PCATRACE"] = PCA_DebugNextIcon
+
+SLASH_PCASPELLS1 = "/pcaspells"
+SlashCmdList["PCASPELLS"] = function()
+    DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00--- Spellbook Dump ---|r")
+    local found = {}
+    local outStr = ""
+    local total = 0
+    PCA_Config.SpellbookDump = {}
+    
+    for i = 1, 500 do
+        local n = GetSpellName(i, BOOKTYPE_SPELL)
+        local t = GetSpellTexture(i, BOOKTYPE_SPELL)
+        if n and not found[n] then
+            found[n] = true
+            total = total + 1
+            
+            local texShort = "none"
+            if t then
+                local _, _, short = string.find(t, "([^\\/]+)$")
+                texShort = short or t
+            end
+            
+            local entry = n .. " [" .. texShort .. "]"
+            table.insert(PCA_Config.SpellbookDump, entry)
+            
+            if string.len(outStr) > 0 then outStr = outStr .. ", " end
+            outStr = outStr .. entry
+            if string.len(outStr) > 80 then
+                DEFAULT_CHAT_FRAME:AddMessage(outStr)
+                outStr = ""
+            end
+        end
+    end
+    if string.len(outStr) > 0 then
+        DEFAULT_CHAT_FRAME:AddMessage(outStr)
+    end
+    if total == 0 then
+        DEFAULT_CHAT_FRAME:AddMessage("|cffff4444Error: No spells detected in slot 1-500!|r")
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("|cffffcc00Total Unique Spells: " .. total .. "|r")
+        DEFAULT_CHAT_FRAME:AddMessage("|cff00ffff[PCA] Spellbook saved. Type /reload to write it to your WTF text file!|r")
+    end
+end
